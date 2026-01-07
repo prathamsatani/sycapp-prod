@@ -1,0 +1,297 @@
+🎯 Project Title
+
+Box Cricket Tournament Management System (IPL-style)
+
+🧠 High-Level Objective
+
+Build a full-stack web application to manage a Box Cricket Tournament end-to-end, inspired by IPL & Cricbuzz, including:
+
+Player registration via QR
+
+Admin-controlled IPL-style auction (points-based)
+
+Live player assignment to teams
+
+Match scheduling
+
+Ball-by-ball live scoring
+
+Auto-calculated leaderboards, points table, and NRR
+
+Public viewing + Admin control panel
+
+The app should feel premium, modern, colorful, and exciting, not dull or form-like.
+
+🔐 User Roles
+👤 Public User (No Login)
+
+Register via QR form
+
+View teams
+
+View auction (read-only)
+
+View live matches
+
+View points table
+
+View leaderboards (runs, wickets, MVP)
+
+🛠 Admin (Login Required)
+
+Edit/normalize player ratings
+
+Upload & edit player photos
+
+Edit base points
+
+Create & manage teams
+
+Fully control auction
+
+Start / pause / stop auction
+
+Start matches
+
+Edit scores
+
+Override any data if needed
+
+🧍 Player Registration (QR Form)
+
+Fields:
+
+Full Name
+
+Mobile Number (unique, no duplicates)
+
+Address
+
+Role (Batsman / Bowler / All-rounder)
+
+Batting Rating (1–10)
+
+Bowling Rating (1–10)
+
+Fielding Rating (1–10)
+
+Upload Player Photo (mandatory)
+
+Rules:
+
+No age limit
+
+Self-rating allowed initially
+
+Admin can later edit ratings & base points
+
+Mobile-friendly UI
+
+Success message after registration
+
+💰 Player Base Points Logic
+
+Default auto-calculation (Admin editable later):
+
+Base Points =
+(Batting + Bowling + Fielding) × Multiplier
+
+
+System should auto-scale multiplier so that:
+
+Players fit realistically within 30,000 team budget
+
+No single player breaks the auction
+
+Admin must be able to:
+
+Override base points manually
+
+Lock base points before auction
+
+🏏 Auction System (IPL Style)
+Teams
+
+Total teams: 12
+
+Each team budget: 30,000 points
+
+Minimum squad size: 8 players
+
+No fixed role constraints (flexible)
+
+Auction Flow
+
+One player displayed at a time
+
+Player card shows:
+
+Photo (IPL-style large card)
+
+Name
+
+Role
+
+Ratings
+
+Base points
+
+Current bid
+
+Admin clicks bid buttons for teams
+
+IPL-style increment slabs (auto-applied):
+
+0–5,000 → +200
+
+5,001–10,000 → +500
+
+10,001+ → +1,000
+
+Unsold Players
+
+Go into special category:
+“The Lost Gold”
+
+Auctioned again at the very end
+
+Auction End
+
+Admin clicks STOP
+
+Player auto-assigned to last bidding team
+
+Points deducted instantly
+
+Live squad update for teams
+
+📊 Match Setup
+
+Format: Box Cricket
+
+Overs per innings: 6
+
+Teams per match: 2
+
+Playing XI concept NOT enforced
+
+Assume all 8 players can participate
+
+Extras:
+
+Wide
+
+No-ball
+
+Wickets
+
+No retired hurt
+
+⏱ Live Scorecard (FULL – IPL LEVEL)
+
+Implement ball-by-ball scoring:
+
+Runs
+
+Extras
+
+Wickets
+
+Strike change
+
+Bowler economy
+
+Over progression
+
+Fall of wickets
+
+Live visuals similar to Cricbuzz:
+
+Batting card
+
+Bowling card
+
+Partnership info
+
+Current run rate
+
+Required run rate
+
+Admin can:
+
+Undo last ball
+
+Edit score manually
+
+🏆 Match Result Rules
+
+Win = 2 points
+
+Loss = 0 points
+
+Tie → Super Over
+
+3 balls per side
+
+Same rules as IPL super over
+
+📈 Points Table & NRR
+
+Standard cricket Net Run Rate formula
+
+Auto-update after each match
+
+Sort by:
+
+Points
+
+NRR
+
+Wins
+
+🥇 Leaderboards (AUTO-CALCULATED)
+
+Team Standings
+
+Orange Cap (Top Run Scorers)
+
+Purple Cap (Top Wicket Takers)
+
+MVP:
+
+Runs + Wickets + Match Impact
+
+🎨 UI / UX Requirements
+
+IPL / Cricbuzz inspired visuals
+
+Player cards with photos
+
+Smooth animations during auction
+
+Mobile-friendly
+
+Dark + vibrant color palette
+
+Live updates without page refresh
+
+🧱 Technical Instructions (Important)
+
+Choose best tech stack automatically
+
+Use clean architecture
+
+Beginner-readable code
+
+Modular structure
+
+Secure admin routes
+
+Replit-friendly deployment
+
+Persist data properly (no loss on refresh)
+
+✅ Final Instruction
+
+Build this as a complete working system, not a demo.
+Follow IPL / Cricbuzz logic whenever unsure.
