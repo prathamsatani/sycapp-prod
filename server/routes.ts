@@ -393,6 +393,133 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/auction/reset", async (req, res) => {
+    try {
+      const players = await storage.getAllPlayers();
+      for (const player of players) {
+        await storage.updatePlayer(player.id, {
+          status: "registered",
+          teamId: null,
+          soldPrice: null,
+          isLocked: false,
+        });
+      }
+      
+      const teams = await storage.getAllTeams();
+      for (const team of teams) {
+        await storage.updateTeam(team.id, {
+          remainingBudget: team.budget,
+        });
+      }
+      
+      await storage.updateAuctionState({
+        status: "not_started",
+        currentPlayerId: null,
+        currentBid: null,
+        currentBiddingTeamId: null,
+        bidHistory: [],
+      });
+      
+      res.json({ success: true, message: "Auction reset successfully" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reset auction" });
+    }
+  });
+
+  app.post("/api/tournament/assign-groups", async (req, res) => {
+    try {
+      const teams = await storage.getAllTeams();
+      const groups = ["A", "B", "C", "D"];
+      
+      const shuffledTeams = [...teams].sort(() => Math.random() - 0.5);
+      
+      for (let i = 0; i < shuffledTeams.length; i++) {
+        const groupIndex = Math.floor(i / 3);
+        if (groupIndex < groups.length) {
+          await storage.updateTeam(shuffledTeams[i].id, {
+            groupName: groups[groupIndex],
+          });
+        }
+      }
+      
+      const updatedTeams = await storage.getAllTeams();
+      res.json(updatedTeams);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to assign groups" });
+    }
+  });
+
+  app.post("/api/tournament/generate-fixtures", async (req, res) => {
+    try {
+      const teams = await storage.getAllTeams();
+      const groups = ["A", "B", "C", "D"];
+      const fixtures: any[] = [];
+      
+      for (const group of groups) {
+        const groupTeams = teams.filter(t => t.groupName === group);
+        if (groupTeams.length >= 2) {
+          for (let i = 0; i < groupTeams.length; i++) {
+            for (let j = i + 1; j < groupTeams.length; j++) {
+              const match = await storage.createMatch({
+                matchNumber: fixtures.length + 1,
+                team1Id: groupTeams[i].id,
+                team2Id: groupTeams[j].id,
+                stage: "group",
+                groupName: group,
+              });
+              fixtures.push(match);
+            }
+          }
+        }
+      }
+      
+      res.json(fixtures);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to generate fixtures" });
+    }
+  });
+
+  app.post("/api/tournament/create-semifinals", async (req, res) => {
+    try {
+      const { semifinal1Teams, semifinal2Teams } = req.body;
+      
+      const semi1 = await storage.createMatch({
+        matchNumber: 0,
+        team1Id: semifinal1Teams[0],
+        team2Id: semifinal1Teams[1],
+        stage: "semifinal",
+      });
+      
+      const semi2 = await storage.createMatch({
+        matchNumber: 0,
+        team1Id: semifinal2Teams[0],
+        team2Id: semifinal2Teams[1],
+        stage: "semifinal",
+      });
+      
+      res.json([semi1, semi2]);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create semifinals" });
+    }
+  });
+
+  app.post("/api/tournament/create-final", async (req, res) => {
+    try {
+      const { team1Id, team2Id } = req.body;
+      
+      const final = await storage.createMatch({
+        matchNumber: 0,
+        team1Id,
+        team2Id,
+        stage: "final",
+      });
+      
+      res.json(final);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create final" });
+    }
+  });
+
   // ============ MATCHES ============
   
   app.get("/api/matches", async (req, res) => {

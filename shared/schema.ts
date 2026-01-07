@@ -34,6 +34,7 @@ export const teams = pgTable("teams", {
   logoUrl: text("logo_url"),
   budget: integer("budget").notNull().default(30000),
   remainingBudget: integer("remaining_budget").notNull().default(30000),
+  groupName: text("group_name"), // A, B, C, D
 });
 
 export const insertTeamSchema = createInsertSchema(teams).omit({ id: true });
@@ -61,6 +62,8 @@ export const matches = pgTable("matches", {
   team1Id: varchar("team1_id", { length: 36 }).notNull(),
   team2Id: varchar("team2_id", { length: 36 }).notNull(),
   status: text("status").notNull().default("scheduled"), // scheduled, live, completed
+  stage: text("stage").default("group"), // group, semifinal, final
+  groupName: text("group_name"), // A, B, C, D (for group stage matches)
   tossWinnerId: varchar("toss_winner_id", { length: 36 }),
   tossDecision: text("toss_decision"), // bat, bowl
   winnerId: varchar("winner_id", { length: 36 }),

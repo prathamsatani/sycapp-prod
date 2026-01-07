@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Shield, Users, Gavel, Play, Settings, Plus, Trash2, Edit, Lock, Unlock, Check, X, CircleDot, Target, Loader2 } from "lucide-react";
+import { Shield, Users, Gavel, Play, Settings, Plus, Trash2, Edit, Lock, Unlock, Check, X, CircleDot, Target, Loader2, QrCode, RotateCcw, Trophy, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,18 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Player, Team, Match, AuctionState } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import { QRCodeSVG } from "qrcode.react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function Admin() {
   const { toast } = useToast();
@@ -123,6 +135,51 @@ function AdminDashboard() {
     },
   });
 
+  const auctionResetMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/auction/reset", {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auction/state"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/players"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      toast({ title: "Auction reset successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to reset auction", variant: "destructive" });
+    },
+  });
+
+  const updateTeamMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; name?: string; shortName?: string; primaryColor?: string; secondaryColor?: string; logoUrl?: string; groupName?: string }) => {
+      return apiRequest("PATCH", `/api/teams/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      toast({ title: "Team updated" });
+    },
+  });
+
+  const assignGroupsMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/tournament/assign-groups", {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      toast({ title: "Groups assigned randomly" });
+    },
+  });
+
+  const generateFixturesMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/tournament/generate-fixtures", {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/matches"] });
+      toast({ title: "Group stage fixtures generated" });
+    },
+  });
+
   const placeBidMutation = useMutation({
     mutationFn: async (teamId: string) => {
       return apiRequest("POST", "/api/auction/bid", { teamId });
@@ -214,8 +271,12 @@ function AdminDashboard() {
           </Badge>
         </div>
 
-        <Tabs defaultValue="auction" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+        <Tabs defaultValue="registration" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-6 max-w-4xl">
+            <TabsTrigger value="registration" className="gap-2" data-testid="admin-tab-registration">
+              <QrCode className="w-4 h-4" />
+              Registration
+            </TabsTrigger>
             <TabsTrigger value="auction" className="gap-2" data-testid="admin-tab-auction">
               <Gavel className="w-4 h-4" />
               Auction
@@ -228,19 +289,128 @@ function AdminDashboard() {
               <Target className="w-4 h-4" />
               Players
             </TabsTrigger>
+            <TabsTrigger value="tournament" className="gap-2" data-testid="admin-tab-tournament">
+              <Trophy className="w-4 h-4" />
+              Tournament
+            </TabsTrigger>
             <TabsTrigger value="scoring" className="gap-2" data-testid="admin-tab-scoring">
               <Play className="w-4 h-4" />
               Scoring
             </TabsTrigger>
           </TabsList>
 
+          <TabsContent value="registration" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <QrCode className="w-5 h-5" />
+                    Registration QR Code
+                  </CardTitle>
+                  <CardDescription>
+                    Display this QR code for players to scan and register on their phones
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col items-center gap-4">
+                  <div className="p-6 bg-white rounded-md">
+                    <QRCodeSVG 
+                      value={typeof window !== 'undefined' ? `${window.location.origin}/register` : '/register'}
+                      size={200}
+                      level="H"
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground text-center">
+                    Scan to open registration form
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      const url = `${window.location.origin}/register`;
+                      navigator.clipboard.writeText(url);
+                      toast({ title: "Link copied to clipboard" });
+                    }}
+                    data-testid="button-copy-link"
+                  >
+                    Copy Registration Link
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Registered Players ({players?.length || 0})</CardTitle>
+                  <CardDescription>Players who have registered via the form</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {playersLoading ? (
+                    <div className="space-y-2">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Skeleton key={i} className="h-12" />
+                      ))}
+                    </div>
+                  ) : players && players.length > 0 ? (
+                    <ScrollArea className="h-[400px]">
+                      <div className="space-y-2 pr-4">
+                        {players.map((player) => (
+                          <div key={player.id} className="flex items-center gap-3 p-3 rounded-md bg-muted/50" data-testid={`reg-player-${player.id}`}>
+                            <Avatar className="h-10 w-10">
+                              <AvatarImage src={player.photoUrl} alt={player.name} />
+                              <AvatarFallback>{player.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{player.name}</p>
+                              <p className="text-xs text-muted-foreground">{player.role} | {player.mobile}</p>
+                            </div>
+                            <Badge variant="outline" className="shrink-0">
+                              {player.basePoints} pts
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  ) : (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>No players registered yet</p>
+                      <p className="text-sm mt-1">Share the QR code to start registrations</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
           <TabsContent value="auction" className="space-y-6">
             <Card>
-              <CardHeader>
-                <CardTitle>Auction Control</CardTitle>
-                <CardDescription>
-                  Status: <Badge variant="outline" className="ml-2">{auctionState?.status || "not_started"}</Badge>
-                </CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between gap-4">
+                <div>
+                  <CardTitle>Auction Control</CardTitle>
+                  <CardDescription>
+                    Status: <Badge variant="outline" className="ml-2">{auctionState?.status || "not_started"}</Badge>
+                  </CardDescription>
+                </div>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" className="gap-2 text-destructive border-destructive/30" data-testid="button-reset-auction">
+                      <RotateCcw className="w-4 h-4" />
+                      Reset Auction
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Reset Auction?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will clear all player assignments, restore all team budgets to full, and reset the auction to "not started" state. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => auctionResetMutation.mutate()} className="bg-destructive text-destructive-foreground">
+                        Reset Auction
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex flex-wrap gap-3">
@@ -369,28 +539,149 @@ function AdminDashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {teams?.map((team) => (
-                  <Card key={team.id} data-testid={`admin-team-${team.id}`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div 
-                          className="w-12 h-12 rounded-md flex items-center justify-center text-white font-display"
-                          style={{ backgroundColor: team.primaryColor }}
-                        >
-                          {team.shortName}
+                {teams?.map((team) => {
+                  const teamPlayers = players?.filter(p => p.teamId === team.id) || [];
+                  return (
+                    <Card key={team.id} data-testid={`admin-team-${team.id}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3 mb-3">
+                          {team.logoUrl ? (
+                            <img src={team.logoUrl} alt={team.name} className="w-12 h-12 rounded-md object-cover" />
+                          ) : (
+                            <div 
+                              className="w-12 h-12 rounded-md flex items-center justify-center text-white font-display"
+                              style={{ backgroundColor: team.primaryColor }}
+                            >
+                              {team.shortName}
+                            </div>
+                          )}
+                          <div className="flex-1">
+                            <h3 className="font-medium">{team.name}</h3>
+                            <p className="text-sm text-muted-foreground">
+                              Budget: {team.remainingBudget.toLocaleString()} / {team.budget.toLocaleString()}
+                            </p>
+                          </div>
+                          <EditTeamDialog team={team} onSubmit={(data) => updateTeamMutation.mutate({ id: team.id, ...data })} />
                         </div>
-                        <div>
-                          <h3 className="font-medium">{team.name}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            Budget: {team.remainingBudget.toLocaleString()} / {team.budget.toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                        {team.groupName && (
+                          <Badge variant="outline" className="mb-2">Group {team.groupName}</Badge>
+                        )}
+                        {teamPlayers.length > 0 && (
+                          <div className="mt-2 pt-2 border-t">
+                            <p className="text-xs text-muted-foreground mb-1">Players ({teamPlayers.length})</p>
+                            <div className="flex flex-wrap gap-1">
+                              {teamPlayers.slice(0, 3).map(p => (
+                                <Badge key={p.id} variant="secondary" className="text-xs">{p.name.split(' ')[0]}</Badge>
+                              ))}
+                              {teamPlayers.length > 3 && (
+                                <Badge variant="secondary" className="text-xs">+{teamPlayers.length - 3}</Badge>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="tournament" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5" />
+                  Tournament Structure
+                </CardTitle>
+                <CardDescription>
+                  4 Groups of 3 Teams each. Top team from each group advances to Semi-Finals.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex flex-wrap gap-3">
+                  <Button 
+                    onClick={() => assignGroupsMutation.mutate()}
+                    disabled={assignGroupsMutation.isPending}
+                    data-testid="button-assign-groups"
+                  >
+                    {assignGroupsMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    Randomly Assign Groups
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    onClick={() => generateFixturesMutation.mutate()}
+                    disabled={generateFixturesMutation.isPending}
+                    data-testid="button-generate-fixtures"
+                  >
+                    {generateFixturesMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    Generate Group Fixtures
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {["A", "B", "C", "D"].map((groupName) => {
+                    const groupTeams = teams?.filter(t => t.groupName === groupName) || [];
+                    return (
+                      <Card key={groupName} className="bg-muted/30">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-lg">Group {groupName}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          {groupTeams.length > 0 ? (
+                            <div className="space-y-2">
+                              {groupTeams.map((team, index) => (
+                                <div key={team.id} className="flex items-center gap-2 p-2 rounded-md bg-card">
+                                  <span className="text-sm font-medium text-muted-foreground">{index + 1}.</span>
+                                  <div 
+                                    className="w-6 h-6 rounded flex items-center justify-center text-white text-xs font-display"
+                                    style={{ backgroundColor: team.primaryColor }}
+                                  >
+                                    {team.shortName}
+                                  </div>
+                                  <span className="text-sm truncate">{team.name}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                              No teams assigned
+                            </p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+
+                <Card className="bg-muted/30">
+                  <CardHeader>
+                    <CardTitle className="text-lg">Tournament Flow</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-col md:flex-row items-center justify-center gap-4 text-center">
+                      <div className="flex-1 p-4 rounded-md bg-card">
+                        <p className="text-xs text-muted-foreground mb-1">GROUP STAGE</p>
+                        <p className="font-display text-2xl">12 Matches</p>
+                        <p className="text-sm text-muted-foreground">Each team plays 2 matches</p>
+                      </div>
+                      <div className="text-2xl text-muted-foreground hidden md:block">&rarr;</div>
+                      <div className="flex-1 p-4 rounded-md bg-card">
+                        <p className="text-xs text-muted-foreground mb-1">SEMI-FINALS</p>
+                        <p className="font-display text-2xl">2 Matches</p>
+                        <p className="text-sm text-muted-foreground">Top team from each group</p>
+                      </div>
+                      <div className="text-2xl text-muted-foreground hidden md:block">&rarr;</div>
+                      <div className="flex-1 p-4 rounded-md bg-primary/10 border border-primary/20">
+                        <p className="text-xs text-primary mb-1">FINAL</p>
+                        <p className="font-display text-2xl text-primary">1 Match</p>
+                        <p className="text-sm text-muted-foreground">Semi-final winners</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="players" className="space-y-6">
@@ -561,6 +852,97 @@ function CreateTeamDialog({ onSubmit }: { onSubmit: (data: { name: string; short
         <DialogFooter>
           <Button onClick={handleSubmit} disabled={!name || !shortName} data-testid="button-submit-team">
             Create Team
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditTeamDialog({ team, onSubmit }: { team: Team; onSubmit: (data: { name?: string; shortName?: string; primaryColor?: string; secondaryColor?: string; logoUrl?: string }) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(team.name);
+  const [shortName, setShortName] = useState(team.shortName);
+  const [primaryColor, setPrimaryColor] = useState(team.primaryColor);
+  const [secondaryColor, setSecondaryColor] = useState(team.secondaryColor);
+  const [logoUrl, setLogoUrl] = useState(team.logoUrl || "");
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = () => {
+    onSubmit({ name, shortName, primaryColor, secondaryColor, logoUrl: logoUrl || undefined });
+    setOpen(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" data-testid={`button-edit-team-${team.id}`}>
+          <Edit className="w-4 h-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Team: {team.name}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label>Team Logo</Label>
+            <div className="flex items-center gap-4 mt-2">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo preview" className="w-16 h-16 rounded-md object-cover" />
+              ) : (
+                <div 
+                  className="w-16 h-16 rounded-md flex items-center justify-center text-white font-display"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  {shortName}
+                </div>
+              )}
+              <div className="flex-1">
+                <Input type="file" accept="image/*" onChange={handleLogoUpload} data-testid="input-team-logo" />
+                <p className="text-xs text-muted-foreground mt-1">Upload team logo (optional)</p>
+              </div>
+            </div>
+          </div>
+          <div>
+            <Label>Team Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} data-testid="input-edit-team-name" />
+          </div>
+          <div>
+            <Label>Short Name</Label>
+            <Input value={shortName} onChange={(e) => setShortName(e.target.value.toUpperCase().slice(0, 3))} maxLength={3} data-testid="input-edit-team-short" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Primary Color</Label>
+              <div className="flex gap-2">
+                <Input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="w-12 h-10 p-1" />
+                <Input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="flex-1" />
+              </div>
+            </div>
+            <div>
+              <Label>Secondary Color</Label>
+              <div className="flex gap-2">
+                <Input type="color" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="w-12 h-10 p-1" />
+                <Input value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="flex-1" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={!name || !shortName} data-testid="button-save-team">
+            Save Changes
           </Button>
         </DialogFooter>
       </DialogContent>
