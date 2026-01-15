@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
+import Home from "@/pages/home";
 import Admin from "@/pages/admin";
 import Register from "@/pages/register";
 import NotFound from "@/pages/not-found";
@@ -19,14 +20,12 @@ import PointsTableDisplay from "@/pages/display/points-table";
 // 1. /admin - Admin controls (auction, matches, approvals, scoring)
 // 2. /display - Display mode for screencasting (no controls)
 
-function AdminRouter() {
+function MainRouter() {
   return (
     <Switch>
+      <Route path="/" component={Home} />
       <Route path="/admin" component={Admin} />
       <Route path="/register" component={Register} />
-      <Route path="/">
-        <Redirect to="/admin" />
-      </Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -71,7 +70,7 @@ function App() {
             <DisplayRouter />
           ) : (
             <div className="min-h-screen bg-background text-foreground">
-              <AdminRouter />
+              <MainRouter />
             </div>
           )}
           <Toaster />
