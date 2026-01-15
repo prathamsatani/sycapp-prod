@@ -1,10 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useCallback } from "react";
-import { Play, Circle } from "lucide-react";
+import { Play, Circle, Target, TrendingUp, Trophy, User, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CricketEventAnimation, BallIndicator } from "@/components/cricket-animations";
-import type { Team, Match, BallEvent } from "@shared/schema";
+import type { Team, Match, BallEvent, Player, PlayerMatchStats } from "@shared/schema";
 
 type CricketEventType = "wicket" | "six" | "four" | "no-ball" | "wide" | "dot" | null;
 
@@ -22,16 +24,43 @@ export default function MatchDisplay() {
     refetchInterval: 5000,
   });
 
+  const { data: players } = useQuery<Player[]>({
+    queryKey: ["/api/players"],
+    refetchInterval: 5000,
+  });
+
   const { data: ballEvents } = useQuery<BallEvent[]>({
     queryKey: ["/api/ball-events"],
     refetchInterval: 1000,
   });
 
   const liveMatch = matches?.find(m => m.status === "live");
+
+  const { data: matchStats } = useQuery<PlayerMatchStats[]>({
+    queryKey: ["/api/matches", liveMatch?.id, "player-stats"],
+    enabled: !!liveMatch?.id,
+    refetchInterval: 1000,
+  });
+
   const team1 = teams?.find(t => t.id === liveMatch?.team1Id);
   const team2 = teams?.find(t => t.id === liveMatch?.team2Id);
   const matchBallEvents = ballEvents?.filter(e => e.matchId === liveMatch?.id) || [];
   const currentInningsBalls = matchBallEvents.filter(e => e.innings === liveMatch?.currentInnings);
+
+  const getPlayerName = (playerId: string | null | undefined) => {
+    if (!playerId) return "TBD";
+    const player = players?.find(p => p.id === playerId);
+    return player?.name || "Unknown";
+  };
+
+  const getPlayerShortName = (playerId: string | null | undefined) => {
+    if (!playerId) return "TBD";
+    const player = players?.find(p => p.id === playerId);
+    if (!player?.name) return "Unknown";
+    const parts = player.name.split(" ");
+    if (parts.length === 1) return parts[0];
+    return `${parts[0][0]}. ${parts[parts.length - 1]}`;
+  };
 
   const triggerEventAnimation = useCallback((event: BallEvent) => {
     if (event.isWicket) {
@@ -69,11 +98,129 @@ export default function MatchDisplay() {
 
   const target = liveMatch?.currentInnings === 2 ? (liveMatch.team1Score + 1) : null;
   const requiredRuns = target ? target - (liveMatch?.team2Score || 0) : null;
+  const remainingBalls = liveMatch?.currentInnings === 2 
+    ? Math.max(0, 36 - (parseFloat(liveMatch?.team2Overs || "0") * 6))
+    : null;
+  const requiredRate = remainingBalls && remainingBalls > 0 && requiredRuns
+    ? ((requiredRuns / remainingBalls) * 6).toFixed(2)
+    : null;
 
   const getThisOver = () => {
     if (!liveMatch) return [];
-    const currentOver = Math.floor(parseFloat(liveMatch.currentInnings === 1 ? liveMatch.team1Overs : liveMatch.team2Overs || "0"));
-    return currentInningsBalls.filter(b => b.overNumber === currentOver + 1).slice(-6);
+    const currentOvers = liveMatch.currentInnings === 1 ? liveMatch.team1Overs : liveMatch.team2Overs;
+    const [o, b] = (currentOvers || "0.0").split(".").map(Number);
+    const currentOver = b === 0 ? o : o + 1;
+    return currentInningsBalls.filter(ball => ball.overNumber === currentOver).slice(-6);
+  };
+
+  const getStrikerStats = () => {
+    if (!liveMatch?.strikerId || !matchStats) return null;
+    const stats = matchStats.find(s => s.playerId === liveMatch.strikerId && s.innings === liveMatch.currentInnings);
+    return {
+      name: getPlayerShortName(liveMatch.strikerId),
+      runs: stats?.runsScored || 0,
+      balls: stats?.ballsFaced || 0,
+      fours: stats?.fours || 0,
+      sixes: stats?.sixes || 0,
+      strikeRate: stats?.ballsFaced ? ((stats.runsScored || 0) / stats.ballsFaced * 100).toFixed(1) : "0.0",
+      isStriker: true,
+    };
+  };
+
+  const getNonStrikerStats = () => {
+    if (!liveMatch?.nonStrikerId || !matchStats) return null;
+    const stats = matchStats.find(s => s.playerId === liveMatch.nonStrikerId && s.innings === liveMatch.currentInnings);
+    return {
+      name: getPlayerShortName(liveMatch.nonStrikerId),
+      runs: stats?.runsScored || 0,
+      balls: stats?.ballsFaced || 0,
+      fours: stats?.fours || 0,
+      sixes: stats?.sixes || 0,
+      strikeRate: stats?.ballsFaced ? ((stats.runsScored || 0) / stats.ballsFaced * 100).toFixed(1) : "0.0",
+      isStriker: false,
+    };
+  };
+
+  const getBowlerStats = () => {
+    if (!liveMatch?.currentBowlerId || !matchStats) return null;
+    const stats = matchStats.find(s => s.playerId === liveMatch.currentBowlerId && s.innings === liveMatch.currentInnings);
+    const overs = parseFloat(stats?.oversBowled || "0.0");
+    return {
+      name: getPlayerShortName(liveMatch.currentBowlerId),
+      overs: stats?.oversBowled || "0.0",
+      runs: stats?.runsConceded || 0,
+      wickets: stats?.wicketsTaken || 0,
+      economy: overs > 0 ? ((stats?.runsConceded || 0) / overs).toFixed(2) : "0.00",
+    };
+  };
+
+  const getBattingScorecard = () => {
+    if (!matchStats || !liveMatch) return [];
+    const battingTeamId = liveMatch.currentInnings === 1 ? liveMatch.team1Id : liveMatch.team2Id;
+    const battingPlayers = players?.filter(p => p.teamId === battingTeamId) || [];
+    
+    return battingPlayers
+      .map(player => {
+        const stats = matchStats.find(s => s.playerId === player.id && s.innings === liveMatch.currentInnings);
+        if (!stats || (stats.ballsFaced === 0 && !stats.isOut)) return null;
+        return {
+          id: player.id,
+          name: getPlayerShortName(player.id),
+          runs: stats.runsScored || 0,
+          balls: stats.ballsFaced || 0,
+          fours: stats.fours || 0,
+          sixes: stats.sixes || 0,
+          strikeRate: stats.ballsFaced ? ((stats.runsScored || 0) / stats.ballsFaced * 100).toFixed(1) : "0.0",
+          isOut: stats.isOut || false,
+          dismissal: stats.dismissalType || "not out",
+          dismissedBy: stats.dismissedBy ? getPlayerShortName(stats.dismissedBy) : null,
+          isStriker: player.id === liveMatch.strikerId,
+          isNonStriker: player.id === liveMatch.nonStrikerId,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => (a!.isStriker || a!.isNonStriker ? -1 : 1));
+  };
+
+  const getBowlingScorecard = () => {
+    if (!matchStats || !liveMatch) return [];
+    const bowlingTeamId = liveMatch.currentInnings === 1 ? liveMatch.team2Id : liveMatch.team1Id;
+    const bowlingPlayers = players?.filter(p => p.teamId === bowlingTeamId) || [];
+    
+    return bowlingPlayers
+      .map(player => {
+        const stats = matchStats.find(s => s.playerId === player.id && s.innings === liveMatch.currentInnings);
+        if (!stats || stats.oversBowled === "0.0") return null;
+        const overs = parseFloat(stats.oversBowled || "0.0");
+        return {
+          id: player.id,
+          name: getPlayerShortName(player.id),
+          overs: stats.oversBowled || "0.0",
+          maidens: 0,
+          runs: stats.runsConceded || 0,
+          wickets: stats.wicketsTaken || 0,
+          economy: overs > 0 ? ((stats.runsConceded || 0) / overs).toFixed(2) : "0.00",
+          isCurrent: player.id === liveMatch.currentBowlerId,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => (a!.isCurrent ? -1 : 1));
+  };
+
+  const getRecentOvers = () => {
+    if (!liveMatch) return [];
+    const overs: { over: number; balls: BallEvent[]; runs: number }[] = [];
+    const currentOvers = liveMatch.currentInnings === 1 ? liveMatch.team1Overs : liveMatch.team2Overs;
+    const [o] = (currentOvers || "0.0").split(".").map(Number);
+    
+    for (let i = Math.max(1, o - 3); i <= o + 1; i++) {
+      const overBalls = currentInningsBalls.filter(ball => ball.overNumber === i);
+      if (overBalls.length > 0) {
+        const totalRuns = overBalls.reduce((sum, ball) => sum + (ball.runs || 0) + (ball.extras || 0), 0);
+        overs.push({ over: i, balls: overBalls, runs: totalRuns });
+      }
+    }
+    return overs.slice(-4);
   };
 
   if (!liveMatch) {
@@ -94,143 +241,356 @@ export default function MatchDisplay() {
     );
   }
 
+  const strikerStats = getStrikerStats();
+  const nonStrikerStats = getNonStrikerStats();
+  const bowlerStats = getBowlerStats();
+  const battingScorecard = getBattingScorecard();
+  const bowlingScorecard = getBowlingScorecard();
+  const recentOvers = getRecentOvers();
+
   return (
     <div className="min-h-screen bg-[#0a0e1a] text-white overflow-hidden relative">
       <div className="absolute inset-0 stadium-spotlight opacity-30" />
 
       <div className="fixed top-0 left-0 right-0 bg-gradient-to-r from-purple-900/80 via-black/80 to-orange-900/80 backdrop-blur-sm border-b border-white/10 z-40">
-        <div className="flex items-center justify-between px-8 py-4">
+        <div className="flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-4">
-            <Badge className="bg-red-500/20 border-red-500 text-red-400 text-lg px-4 py-1">
-              <span className="w-3 h-3 bg-red-500 rounded-full mr-2 animate-pulse" />
+            <Badge className="bg-red-500/20 border-red-500 text-red-400 text-sm px-3 py-1" data-testid="badge-live">
+              <span className="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse" />
               LIVE
             </Badge>
-            <span className="text-gray-400">Match #{liveMatch.matchNumber}</span>
+            <span className="text-gray-400 text-sm">Match #{liveMatch.matchNumber}</span>
           </div>
-          <h1 className="font-display text-3xl tracking-wide">BCL LIVE</h1>
+          <h1 className="font-display text-2xl tracking-wide">BCL LIVE</h1>
         </div>
       </div>
 
-      <div className="pt-28 px-8">
-        <div className="flex items-center justify-center gap-12 mb-12">
+      <div className="pt-20 px-4 pb-8">
+        <div className="flex items-center justify-center gap-8 mb-6">
           <motion.div 
-            className="text-center"
-            animate={{ scale: liveMatch.currentInnings === 1 ? 1.1 : 1 }}
+            className="text-center flex-1 max-w-xs"
+            animate={{ scale: liveMatch.currentInnings === 1 ? 1.05 : 1 }}
           >
             <div 
-              className="w-24 h-24 mx-auto rounded-2xl flex items-center justify-center text-white font-display text-3xl mb-3"
+              className="w-16 h-16 mx-auto rounded-xl flex items-center justify-center text-white font-display text-xl mb-2"
               style={{ backgroundColor: team1?.primaryColor }}
+              data-testid="team1-logo"
             >
               {team1?.shortName}
             </div>
-            <p className="font-display text-2xl">{team1?.name}</p>
-            <p className="font-display text-5xl text-white mt-2">
+            <p className="font-display text-lg">{team1?.name}</p>
+            <p className="font-display text-4xl text-white mt-1" data-testid="team1-score">
               {liveMatch.team1Score}/{liveMatch.team1Wickets}
-              <span className="text-2xl text-gray-400 ml-2">({liveMatch.team1Overs})</span>
+              <span className="text-lg text-gray-400 ml-2">({liveMatch.team1Overs})</span>
             </p>
           </motion.div>
 
           <div className="text-center">
-            <p className="text-gray-500 text-xl mb-2">VS</p>
-            <div className="w-px h-16 bg-gradient-to-b from-transparent via-gray-600 to-transparent mx-auto" />
+            <p className="text-gray-500 text-lg mb-1">VS</p>
+            <div className="w-px h-12 bg-gradient-to-b from-transparent via-gray-600 to-transparent mx-auto" />
           </div>
 
           <motion.div 
-            className="text-center"
-            animate={{ scale: liveMatch.currentInnings === 2 ? 1.1 : 1 }}
+            className="text-center flex-1 max-w-xs"
+            animate={{ scale: liveMatch.currentInnings === 2 ? 1.05 : 1 }}
           >
             <div 
-              className="w-24 h-24 mx-auto rounded-2xl flex items-center justify-center text-white font-display text-3xl mb-3"
+              className="w-16 h-16 mx-auto rounded-xl flex items-center justify-center text-white font-display text-xl mb-2"
               style={{ backgroundColor: team2?.primaryColor }}
+              data-testid="team2-logo"
             >
               {team2?.shortName}
             </div>
-            <p className="font-display text-2xl">{team2?.name}</p>
-            <p className="font-display text-5xl text-white mt-2">
+            <p className="font-display text-lg">{team2?.name}</p>
+            <p className="font-display text-4xl text-white mt-1" data-testid="team2-score">
               {liveMatch.team2Score}/{liveMatch.team2Wickets}
-              <span className="text-2xl text-gray-400 ml-2">({liveMatch.team2Overs})</span>
+              <span className="text-lg text-gray-400 ml-2">({liveMatch.team2Overs})</span>
             </p>
           </motion.div>
         </div>
 
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-white/5 rounded-3xl p-8 border border-white/10 mb-8">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <div 
-                  className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-display"
-                  style={{ backgroundColor: battingTeam?.primaryColor }}
-                >
-                  {battingTeam?.shortName}
-                </div>
-                <div>
-                  <p className="text-sm text-gray-400">BATTING</p>
-                  <p className="font-display text-2xl">{battingTeam?.name}</p>
-                </div>
+        {target && (
+          <div className="max-w-2xl mx-auto mb-4">
+            <div className="bg-gradient-to-r from-purple-500/20 to-orange-500/20 rounded-xl p-3 flex items-center justify-between text-sm">
+              <div className="text-center">
+                <p className="text-gray-400 text-xs">TARGET</p>
+                <p className="font-display text-xl text-yellow-400" data-testid="text-target">{target}</p>
               </div>
-              <motion.div
-                key={battingScore?.score}
-                initial={{ scale: 1.2 }}
-                animate={{ scale: 1 }}
-                className="text-right"
-              >
-                <p className="font-display text-7xl text-glow-orange">
-                  {battingScore?.score}<span className="text-4xl text-gray-400">/{battingScore?.wickets}</span>
-                </p>
-                <p className="text-xl text-gray-400">({battingScore?.overs} overs)</p>
-              </motion.div>
+              <div className="text-center">
+                <p className="text-gray-400 text-xs">NEED</p>
+                <p className="font-display text-xl text-emerald-400" data-testid="text-required">{requiredRuns}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-gray-400 text-xs">BALLS</p>
+                <p className="font-display text-xl text-cyan-400">{remainingBalls}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-gray-400 text-xs">REQ RR</p>
+                <p className="font-display text-xl text-orange-400">{requiredRate}</p>
+              </div>
             </div>
+          </div>
+        )}
 
-            {target && (
-              <div className="bg-gradient-to-r from-purple-500/20 to-orange-500/20 rounded-xl p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-400">TARGET</p>
-                  <p className="font-display text-3xl text-yellow-400">{target}</p>
+        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 space-y-4">
+            <Card className="bg-white/5 border-white/10">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Target className="w-5 h-5 text-emerald-400" />
+                  At The Crease
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {strikerStats && (
+                    <div className="flex items-center justify-between bg-emerald-500/10 rounded-lg p-3 border border-emerald-500/30">
+                      <div className="flex items-center gap-3">
+                        <Badge className="bg-emerald-500 text-white text-xs">*</Badge>
+                        <span className="font-medium" data-testid="text-striker-name">{strikerStats.name}</span>
+                      </div>
+                      <div className="flex items-center gap-6 text-sm">
+                        <div className="text-center">
+                          <p className="text-2xl font-display text-white" data-testid="text-striker-runs">{strikerStats.runs}</p>
+                          <p className="text-gray-400 text-xs">({strikerStats.balls})</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-gray-300">{strikerStats.fours}</p>
+                          <p className="text-gray-500 text-xs">4s</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-gray-300">{strikerStats.sixes}</p>
+                          <p className="text-gray-500 text-xs">6s</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-gray-300">{strikerStats.strikeRate}</p>
+                          <p className="text-gray-500 text-xs">SR</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {nonStrikerStats && (
+                    <div className="flex items-center justify-between bg-white/5 rounded-lg p-3">
+                      <div className="flex items-center gap-3">
+                        <User className="w-4 h-4 text-gray-400" />
+                        <span className="font-medium text-gray-300" data-testid="text-nonstriker-name">{nonStrikerStats.name}</span>
+                      </div>
+                      <div className="flex items-center gap-6 text-sm">
+                        <div className="text-center">
+                          <p className="text-xl font-display text-gray-300" data-testid="text-nonstriker-runs">{nonStrikerStats.runs}</p>
+                          <p className="text-gray-500 text-xs">({nonStrikerStats.balls})</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-gray-400">{nonStrikerStats.fours}</p>
+                          <p className="text-gray-600 text-xs">4s</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-gray-400">{nonStrikerStats.sixes}</p>
+                          <p className="text-gray-600 text-xs">6s</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-gray-400">{nonStrikerStats.strikeRate}</p>
+                          <p className="text-gray-600 text-xs">SR</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {!strikerStats && !nonStrikerStats && (
+                    <div className="text-center text-gray-500 py-4">
+                      Waiting for batsmen to be selected...
+                    </div>
+                  )}
                 </div>
-                <div className="text-center">
-                  <p className="text-sm text-gray-400">NEED</p>
-                  <p className="font-display text-3xl text-emerald-400">{requiredRuns}</p>
+
+                {bowlerStats && (
+                  <div className="mt-4 pt-4 border-t border-white/10">
+                    <div className="flex items-center justify-between bg-purple-500/10 rounded-lg p-3 border border-purple-500/30">
+                      <div className="flex items-center gap-3">
+                        <Zap className="w-4 h-4 text-purple-400" />
+                        <span className="font-medium" data-testid="text-bowler-name">{bowlerStats.name}</span>
+                      </div>
+                      <div className="flex items-center gap-6 text-sm">
+                        <div className="text-center">
+                          <p className="text-lg font-display text-purple-300" data-testid="text-bowler-figures">{bowlerStats.wickets}-{bowlerStats.runs}</p>
+                          <p className="text-gray-500 text-xs">({bowlerStats.overs})</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-gray-300">{bowlerStats.economy}</p>
+                          <p className="text-gray-500 text-xs">Econ</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white/5 border-white/10">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Circle className="w-4 h-4 text-emerald-400" />
+                  This Over
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-center gap-2 flex-wrap min-h-[60px]">
+                  {getThisOver().map((ball, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: i * 0.1 }}
+                    >
+                      <BallIndicator
+                        type={
+                          ball.isWicket ? "wicket" :
+                          ball.extraType === "wide" ? "wide" :
+                          ball.extraType === "no-ball" ? "no-ball" :
+                          ball.runs === 6 ? "six" :
+                          ball.runs === 4 ? "boundary" :
+                          "normal"
+                        }
+                        runs={ball.runs + (ball.extras || 0)}
+                      />
+                    </motion.div>
+                  ))}
+                  {getThisOver().length === 0 && (
+                    <p className="text-gray-500">New over starting...</p>
+                  )}
                 </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-400">RUN RATE</p>
-                  <p className="font-display text-3xl text-cyan-400">
-                    {((battingScore?.score || 0) / (parseFloat(battingScore?.overs || "0") || 1)).toFixed(2)}
-                  </p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white/5 border-white/10">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-blue-400" />
+                  Recent Overs
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {recentOvers.map((over, idx) => (
+                    <div key={idx} className="flex items-center gap-3 bg-white/5 rounded-lg p-2">
+                      <Badge variant="outline" className="min-w-[50px] justify-center">Over {over.over}</Badge>
+                      <div className="flex items-center gap-1 flex-wrap flex-1">
+                        {over.balls.map((ball, i) => (
+                          <BallIndicator
+                            key={i}
+                            type={
+                              ball.isWicket ? "wicket" :
+                              ball.extraType === "wide" ? "wide" :
+                              ball.extraType === "no-ball" ? "no-ball" :
+                              ball.runs === 6 ? "six" :
+                              ball.runs === 4 ? "boundary" :
+                              "normal"
+                            }
+                            runs={ball.runs + (ball.extras || 0)}
+                          />
+                        ))}
+                      </div>
+                      <Badge className="bg-blue-500/20 border-blue-500/50 text-blue-300">{over.runs} runs</Badge>
+                    </div>
+                  ))}
+                  {recentOvers.length === 0 && (
+                    <p className="text-gray-500 text-center py-4">No overs bowled yet</p>
+                  )}
                 </div>
-              </div>
-            )}
+              </CardContent>
+            </Card>
           </div>
 
-          <div className="bg-white/5 rounded-3xl p-6 border border-white/10">
-            <h3 className="font-display text-xl mb-4 flex items-center gap-2">
-              <Circle className="w-4 h-4 text-emerald-400" />
-              THIS OVER
-            </h3>
-            <div className="flex items-center justify-center gap-3 flex-wrap">
-              {getThisOver().map((ball, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ delay: i * 0.1 }}
-                >
-                  <BallIndicator
-                    type={
-                      ball.isWicket ? "wicket" :
-                      ball.extraType === "wide" ? "wide" :
-                      ball.extraType === "no-ball" ? "no-ball" :
-                      ball.runs === 6 ? "six" :
-                      ball.runs === 4 ? "boundary" :
-                      "normal"
-                    }
-                    runs={ball.runs + (ball.extras || 0)}
-                  />
-                </motion.div>
-              ))}
-              {getThisOver().length === 0 && (
-                <p className="text-gray-500">New over starting...</p>
-              )}
-            </div>
+          <div className="space-y-4">
+            <Card className="bg-white/5 border-white/10">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Batting</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-gray-400 text-xs border-b border-white/10">
+                        <th className="text-left py-2 px-3">Batter</th>
+                        <th className="text-center py-2 px-2">R</th>
+                        <th className="text-center py-2 px-2">B</th>
+                        <th className="text-center py-2 px-2">4s</th>
+                        <th className="text-center py-2 px-2">6s</th>
+                        <th className="text-center py-2 px-2">SR</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {battingScorecard.map((batter, idx) => (
+                        <tr key={batter!.id} className={`border-b border-white/5 ${batter!.isStriker ? 'bg-emerald-500/10' : batter!.isNonStriker ? 'bg-white/5' : ''}`}>
+                          <td className="py-2 px-3">
+                            <div className="flex items-center gap-1">
+                              {batter!.isStriker && <span className="text-emerald-400">*</span>}
+                              <span className={batter!.isOut ? 'text-gray-500' : 'text-white'}>{batter!.name}</span>
+                            </div>
+                            {batter!.isOut && (
+                              <p className="text-xs text-gray-500">{batter!.dismissal} {batter!.dismissedBy && `b ${batter!.dismissedBy}`}</p>
+                            )}
+                          </td>
+                          <td className="text-center py-2 px-2 font-medium">{batter!.runs}</td>
+                          <td className="text-center py-2 px-2 text-gray-400">{batter!.balls}</td>
+                          <td className="text-center py-2 px-2 text-gray-400">{batter!.fours}</td>
+                          <td className="text-center py-2 px-2 text-gray-400">{batter!.sixes}</td>
+                          <td className="text-center py-2 px-2 text-gray-400">{batter!.strikeRate}</td>
+                        </tr>
+                      ))}
+                      {battingScorecard.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="text-center py-4 text-gray-500">No batters yet</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white/5 border-white/10">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Bowling</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-gray-400 text-xs border-b border-white/10">
+                        <th className="text-left py-2 px-3">Bowler</th>
+                        <th className="text-center py-2 px-2">O</th>
+                        <th className="text-center py-2 px-2">R</th>
+                        <th className="text-center py-2 px-2">W</th>
+                        <th className="text-center py-2 px-2">Eco</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bowlingScorecard.map((bowler, idx) => (
+                        <tr key={bowler!.id} className={`border-b border-white/5 ${bowler!.isCurrent ? 'bg-purple-500/10' : ''}`}>
+                          <td className="py-2 px-3">
+                            <div className="flex items-center gap-1">
+                              {bowler!.isCurrent && <Zap className="w-3 h-3 text-purple-400" />}
+                              <span className="text-white">{bowler!.name}</span>
+                            </div>
+                          </td>
+                          <td className="text-center py-2 px-2 text-gray-400">{bowler!.overs}</td>
+                          <td className="text-center py-2 px-2 text-gray-400">{bowler!.runs}</td>
+                          <td className="text-center py-2 px-2 font-medium text-purple-300">{bowler!.wickets}</td>
+                          <td className="text-center py-2 px-2 text-gray-400">{bowler!.economy}</td>
+                        </tr>
+                      ))}
+                      {bowlingScorecard.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="text-center py-4 text-gray-500">No bowlers yet</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>

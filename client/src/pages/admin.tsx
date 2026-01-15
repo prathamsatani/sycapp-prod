@@ -310,6 +310,45 @@ function AdminDashboard() {
     },
   });
 
+  const setBatsmenMutation = useMutation({
+    mutationFn: async ({ matchId, strikerId, nonStrikerId }: { matchId: string; strikerId: string; nonStrikerId: string }) => {
+      return apiRequest("POST", `/api/matches/${matchId}/set-batsmen`, { strikerId, nonStrikerId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/matches"] });
+      toast({ title: "Batsmen set!" });
+    },
+    onError: () => {
+      toast({ title: "Failed to set batsmen", variant: "destructive" });
+    },
+  });
+
+  const setBowlerMutation = useMutation({
+    mutationFn: async ({ matchId, bowlerId }: { matchId: string; bowlerId: string }) => {
+      return apiRequest("POST", `/api/matches/${matchId}/set-bowler`, { bowlerId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/matches"] });
+      toast({ title: "Bowler set!" });
+    },
+    onError: () => {
+      toast({ title: "Failed to set bowler", variant: "destructive" });
+    },
+  });
+
+  const newBatsmanMutation = useMutation({
+    mutationFn: async ({ matchId, batsmanId }: { matchId: string; batsmanId: string }) => {
+      return apiRequest("POST", `/api/matches/${matchId}/new-batsman`, { batsmanId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/matches"] });
+      toast({ title: "New batsman added!" });
+    },
+    onError: () => {
+      toast({ title: "Failed to add batsman", variant: "destructive" });
+    },
+  });
+
   const currentPlayer = players?.find(p => p.id === auctionState?.currentPlayerId);
   const currentBiddingTeam = teams?.find(t => t.id === auctionState?.currentBiddingTeamId);
   const liveMatch = matches?.find(m => m.status === "live");
@@ -501,7 +540,7 @@ function AdminDashboard() {
                   {(auctionState?.status === "in_progress" || auctionState?.status === "paused") && (
                     <Button 
                       variant="outline" 
-                      onClick={() => auctionControlMutation.mutate({ action: "next", category: auctionState?.currentCategory })}
+                      onClick={() => auctionControlMutation.mutate({ action: "next", category: auctionState?.currentCategory || "3000" })}
                     >
                       Next Player
                     </Button>
@@ -997,6 +1036,7 @@ function AdminDashboard() {
               <LiveScoringPanel 
                 match={liveMatch} 
                 teams={teams || []} 
+                players={players || []}
                 onRecordBall={(data) => recordBallMutation.mutate({ matchId: liveMatch.id, ...data })}
                 isRecording={recordBallMutation.isPending}
                 onSetPowerOver={(overNumber) => setPowerOverMutation.mutate({ 
@@ -1004,6 +1044,13 @@ function AdminDashboard() {
                   overNumber, 
                   innings: liveMatch.currentInnings ?? 1 
                 })}
+                onSetBatsmen={(strikerId, nonStrikerId) => setBatsmenMutation.mutate({ 
+                  matchId: liveMatch.id, 
+                  strikerId, 
+                  nonStrikerId 
+                })}
+                onSetBowler={(bowlerId) => setBowlerMutation.mutate({ matchId: liveMatch.id, bowlerId })}
+                onNewBatsman={(batsmanId) => newBatsmanMutation.mutate({ matchId: liveMatch.id, batsmanId })}
               />
             ) : (
               <Card>
@@ -1305,39 +1352,73 @@ function StartMatchDialog({ match, teams, onStart }: { match: Match; teams: Team
 
 function LiveScoringPanel({ 
   match, 
-  teams, 
+  teams,
+  players,
   onRecordBall,
   isRecording,
-  onSetPowerOver
+  onSetPowerOver,
+  onSetBatsmen,
+  onSetBowler,
+  onNewBatsman
 }: { 
   match: Match; 
-  teams: Team[]; 
-  onRecordBall: (data: { runs: number; extraType?: string; isWicket?: boolean; wicketType?: string }) => void;
+  teams: Team[];
+  players: Player[];
+  onRecordBall: (data: { runs: number; extraType?: string; isWicket?: boolean; wicketType?: string; dismissedPlayerId?: string }) => void;
   isRecording: boolean;
   onSetPowerOver: (overNumber: number) => void;
+  onSetBatsmen: (strikerId: string, nonStrikerId: string) => void;
+  onSetBowler: (bowlerId: string) => void;
+  onNewBatsman: (batsmanId: string) => void;
 }) {
+  const [selectedStriker, setSelectedStriker] = useState<string>("");
+  const [selectedNonStriker, setSelectedNonStriker] = useState<string>("");
+  const [selectedBowler, setSelectedBowler] = useState<string>("");
+  const [selectedNewBatsman, setSelectedNewBatsman] = useState<string>("");
+  const [selectedDismissedPlayer, setSelectedDismissedPlayer] = useState<string>("");
+
   const team1 = teams.find(t => t.id === match.team1Id);
   const team2 = teams.find(t => t.id === match.team2Id);
   
   // Calculate current over number
   const currentOvers = match.currentInnings === 1 ? match.team1Overs : match.team2Overs;
-  const [overs] = (currentOvers || "0.0").split(".").map(Number);
+  const [overs, balls] = (currentOvers || "0.0").split(".").map(Number);
   const currentOverNumber = overs + 1;
   
   // Check if power over is active for current innings
   const isPowerOverActive = match.powerOverActive && match.powerOverInnings === match.currentInnings;
   const isPowerOverNow = isPowerOverActive && match.powerOverNumber === currentOverNumber;
 
+  // Get batting and bowling team players
+  const battingTeamId = match.currentInnings === 1 ? match.team1Id : match.team2Id;
+  const bowlingTeamId = match.currentInnings === 1 ? match.team2Id : match.team1Id;
+  const battingTeamPlayers = players.filter(p => p.teamId === battingTeamId);
+  const bowlingTeamPlayers = players.filter(p => p.teamId === bowlingTeamId);
+
+  // Check if batsmen and bowler are set
+  const hasBatsmen = match.strikerId && match.nonStrikerId;
+  const hasBowler = match.currentBowlerId;
+  const needsNewBatsman = !match.strikerId && match.nonStrikerId;
+  const needsNewBowler = !match.currentBowlerId;
+  const isEndOfOver = balls === 0 && overs > 0;
+  const canScore = hasBatsmen && hasBowler;
+
+  const getPlayerName = (playerId: string | null | undefined) => {
+    if (!playerId) return "Not selected";
+    const player = players.find(p => p.id === playerId);
+    return player?.name || "Unknown";
+  };
+
   const recordRuns = (runs: number) => {
     onRecordBall({ runs });
   };
 
   const recordExtra = (type: "wide" | "no_ball") => {
-    onRecordBall({ runs: 1, extraType: type });
+    onRecordBall({ runs: 0, extraType: type });
   };
 
   const recordWicket = (type: string) => {
-    onRecordBall({ runs: 0, isWicket: true, wicketType: type });
+    onRecordBall({ runs: 0, isWicket: true, wicketType: type, dismissedPlayerId: match.strikerId || undefined });
   };
 
   return (
@@ -1417,71 +1498,228 @@ function LiveScoringPanel({
           )}
         </div>
 
-        <div className="space-y-4">
-          <div>
-            <Label className="text-sm text-muted-foreground mb-2 block">Runs</Label>
-            <div className="grid grid-cols-7 gap-2">
-              {[0, 1, 2, 3, 4, 5, 6].map((runs) => (
-                <Button
-                  key={runs}
-                  variant={runs === 4 ? "default" : runs === 6 ? "default" : "outline"}
-                  className={cn(
-                    "h-14 font-display text-2xl",
-                    runs === 4 && "bg-blue-500 hover:bg-blue-600",
-                    runs === 6 && "bg-emerald-500 hover:bg-emerald-600"
-                  )}
-                  onClick={() => recordRuns(runs)}
-                  disabled={isRecording}
-                  data-testid={`button-runs-${runs}`}
-                >
-                  {isRecording ? <Loader2 className="w-4 h-4 animate-spin" /> : runs}
-                </Button>
-              ))}
-            </div>
-          </div>
+        {/* Batsmen & Bowler Selection */}
+        <div className="p-4 rounded-md border border-blue-500/30 bg-blue-500/5 space-y-4">
+          <Label className="text-sm text-blue-600 flex items-center gap-2">
+            <Target className="w-4 h-4" />
+            Current Players (Innings {match.currentInnings})
+          </Label>
 
-          <div>
-            <Label className="text-sm text-muted-foreground mb-2 block">Extras</Label>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                className="flex-1 h-12 bg-amber-500/10 border-amber-500/30 text-amber-600"
-                onClick={() => recordExtra("wide")}
-                disabled={isRecording}
-                data-testid="button-wide"
-              >
-                Wide
-              </Button>
-              <Button 
-                variant="outline" 
-                className="flex-1 h-12 bg-amber-500/10 border-amber-500/30 text-amber-600"
-                onClick={() => recordExtra("no_ball")}
-                disabled={isRecording}
-                data-testid="button-no-ball"
-              >
-                No Ball
-              </Button>
+          {/* Show current batsmen and bowler if set */}
+          {hasBatsmen && hasBowler ? (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3 rounded-md bg-emerald-500/10 border border-emerald-500/30">
+                <p className="text-xs text-emerald-600 mb-1">Striker *</p>
+                <p className="font-medium text-emerald-700">{getPlayerName(match.strikerId)}</p>
+              </div>
+              <div className="p-3 rounded-md bg-white/50 border dark:bg-white/5">
+                <p className="text-xs text-muted-foreground mb-1">Non-Striker</p>
+                <p className="font-medium">{getPlayerName(match.nonStrikerId)}</p>
+              </div>
+              <div className="p-3 rounded-md bg-purple-500/10 border border-purple-500/30">
+                <p className="text-xs text-purple-600 mb-1">Bowler</p>
+                <p className="font-medium text-purple-700">{getPlayerName(match.currentBowlerId)}</p>
+              </div>
             </div>
-          </div>
+          ) : null}
 
-          <div>
-            <Label className="text-sm text-muted-foreground mb-2 block">Wicket</Label>
-            <div className="grid grid-cols-3 gap-2">
-              {["bowled", "caught", "lbw", "run_out", "stumped"].map((type) => (
-                <Button
-                  key={type}
-                  variant="outline"
-                  className="h-12 bg-destructive/10 border-destructive/30 text-destructive capitalize"
-                  onClick={() => recordWicket(type)}
-                  disabled={isRecording}
-                  data-testid={`button-wicket-${type}`}
-                >
-                  {type.replace("_", " ")}
-                </Button>
-              ))}
+          {/* Opening batsmen selection */}
+          {!hasBatsmen && !match.strikerId && !match.nonStrikerId && (
+            <div className="space-y-3">
+              <p className="text-sm text-blue-600 font-medium">Select Opening Batsmen</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs mb-1 block">Striker</Label>
+                  <Select value={selectedStriker} onValueChange={setSelectedStriker}>
+                    <SelectTrigger data-testid="select-striker">
+                      <SelectValue placeholder="Select striker" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {battingTeamPlayers.map(p => (
+                        <SelectItem key={p.id} value={p.id} disabled={p.id === selectedNonStriker}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs mb-1 block">Non-Striker</Label>
+                  <Select value={selectedNonStriker} onValueChange={setSelectedNonStriker}>
+                    <SelectTrigger data-testid="select-nonstriker">
+                      <SelectValue placeholder="Select non-striker" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {battingTeamPlayers.map(p => (
+                        <SelectItem key={p.id} value={p.id} disabled={p.id === selectedStriker}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button 
+                onClick={() => {
+                  if (selectedStriker && selectedNonStriker) {
+                    onSetBatsmen(selectedStriker, selectedNonStriker);
+                    setSelectedStriker("");
+                    setSelectedNonStriker("");
+                  }
+                }}
+                disabled={!selectedStriker || !selectedNonStriker}
+                data-testid="button-set-batsmen"
+              >
+                Set Opening Batsmen
+              </Button>
             </div>
-          </div>
+          )}
+
+          {/* New batsman selection after wicket */}
+          {needsNewBatsman && (
+            <div className="space-y-3 p-3 rounded-md bg-orange-500/10 border border-orange-500/30">
+              <p className="text-sm text-orange-600 font-medium">Wicket! Select New Batsman</p>
+              <div className="flex gap-3">
+                <Select value={selectedNewBatsman} onValueChange={setSelectedNewBatsman}>
+                  <SelectTrigger className="flex-1" data-testid="select-new-batsman">
+                    <SelectValue placeholder="Select new batsman" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {battingTeamPlayers
+                      .filter(p => p.id !== match.nonStrikerId)
+                      .map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Button 
+                  onClick={() => {
+                    if (selectedNewBatsman) {
+                      onNewBatsman(selectedNewBatsman);
+                      setSelectedNewBatsman("");
+                    }
+                  }}
+                  disabled={!selectedNewBatsman}
+                  data-testid="button-add-batsman"
+                >
+                  Add Batsman
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Bowler selection */}
+          {needsNewBowler && hasBatsmen && (
+            <div className="space-y-3 p-3 rounded-md bg-purple-500/10 border border-purple-500/30">
+              <p className="text-sm text-purple-600 font-medium">
+                {isEndOfOver ? "End of Over! Select Next Bowler" : "Select Bowler"}
+              </p>
+              <div className="flex gap-3">
+                <Select value={selectedBowler} onValueChange={setSelectedBowler}>
+                  <SelectTrigger className="flex-1" data-testid="select-bowler">
+                    <SelectValue placeholder="Select bowler" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bowlingTeamPlayers.map(p => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button 
+                  onClick={() => {
+                    if (selectedBowler) {
+                      onSetBowler(selectedBowler);
+                      setSelectedBowler("");
+                    }
+                  }}
+                  disabled={!selectedBowler}
+                  data-testid="button-set-bowler"
+                >
+                  Set Bowler
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* Scoring Section - Only show when players are set */}
+        {canScore ? (
+          <div className="space-y-4">
+            <div>
+              <Label className="text-sm text-muted-foreground mb-2 block">Runs</Label>
+              <div className="grid grid-cols-7 gap-2">
+                {[0, 1, 2, 3, 4, 5, 6].map((runs) => (
+                  <Button
+                    key={runs}
+                    variant={runs === 4 ? "default" : runs === 6 ? "default" : "outline"}
+                    className={cn(
+                      "h-14 font-display text-2xl",
+                      runs === 4 && "bg-blue-500 hover:bg-blue-600",
+                      runs === 6 && "bg-emerald-500 hover:bg-emerald-600"
+                    )}
+                    onClick={() => recordRuns(runs)}
+                    disabled={isRecording}
+                    data-testid={`button-runs-${runs}`}
+                  >
+                    {isRecording ? <Loader2 className="w-4 h-4 animate-spin" /> : runs}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-sm text-muted-foreground mb-2 block">Extras</Label>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  className="flex-1 h-12 bg-amber-500/10 border-amber-500/30 text-amber-600"
+                  onClick={() => recordExtra("wide")}
+                  disabled={isRecording}
+                  data-testid="button-wide"
+                >
+                  Wide (+1)
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="flex-1 h-12 bg-amber-500/10 border-amber-500/30 text-amber-600"
+                  onClick={() => recordExtra("no_ball")}
+                  disabled={isRecording}
+                  data-testid="button-no-ball"
+                >
+                  No Ball (+1)
+                </Button>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-sm text-muted-foreground mb-2 block">Wicket</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {["bowled", "caught", "lbw", "run_out", "stumped"].map((type) => (
+                  <Button
+                    key={type}
+                    variant="outline"
+                    className="h-12 bg-destructive/10 border-destructive/30 text-destructive capitalize"
+                    onClick={() => recordWicket(type)}
+                    disabled={isRecording}
+                    data-testid={`button-wicket-${type}`}
+                  >
+                    {type.replace("_", " ")}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="p-6 text-center bg-muted/30 rounded-md">
+            <p className="text-muted-foreground">
+              {!hasBatsmen 
+                ? "Select opening batsmen to start scoring" 
+                : !hasBowler 
+                  ? "Select a bowler to start scoring"
+                  : "Ready to score"}
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
