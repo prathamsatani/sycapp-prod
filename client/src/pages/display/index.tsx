@@ -1,9 +1,16 @@
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { Gavel, Play, Trophy, Monitor } from "lucide-react";
+import { Gavel, Play, Trophy, Monitor, UserPlus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 const displayOptions = [
+  {
+    href: "/display/register",
+    title: "Player Registration",
+    description: "Register as a player for the tournament with QR code support",
+    icon: UserPlus,
+    gradient: "from-blue-600 to-purple-500",
+  },
   {
     href: "/display/auction",
     title: "Auction Display",
@@ -81,13 +88,9 @@ export default function DisplayIndex() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="text-center mt-12"
+          className="text-center mt-12 text-gray-500 text-sm"
         >
-          <Link href="/">
-            <span className="text-purple-400 hover:text-purple-300 transition-colors">
-              Back to main site
-            </span>
-          </Link>
+          Display Mode for Screencasting
         </motion.div>
       </div>
     </div>

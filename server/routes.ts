@@ -896,13 +896,35 @@ export async function registerRoutes(
   
   app.post("/api/players/:id/approve", async (req, res) => {
     try {
+      // First get the player to calculate category from ratings
+      const existingPlayer = await storage.getPlayer(req.params.id);
+      if (!existingPlayer) {
+        return res.status(404).json({ error: "Player not found" });
+      }
+      
+      // Calculate category based on total ratings (batting + bowling + fielding)
+      // Max total is 30 (10+10+10)
+      const totalRating = (existingPlayer.battingRating || 5) + 
+                          (existingPlayer.bowlingRating || 5) + 
+                          (existingPlayer.fieldingRating || 5);
+      
+      let category: string;
+      if (totalRating >= 24) {
+        category = "3000"; // Jhakaas Superstars
+      } else if (totalRating >= 18) {
+        category = "2500"; // Solid Performers
+      } else if (totalRating >= 12) {
+        category = "2000"; // Promising Talent
+      } else {
+        category = "1500"; // Hidden Gems
+      }
+      
       const player = await storage.updatePlayer(req.params.id, {
         approvalStatus: "approved",
         status: "registered",
+        category: category,
       });
-      if (!player) {
-        return res.status(404).json({ error: "Player not found" });
-      }
+      
       res.json(player);
     } catch (error) {
       res.status(500).json({ error: "Failed to approve player" });
