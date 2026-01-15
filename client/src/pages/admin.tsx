@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Player, Team, Match, AuctionState, TournamentSettings } from "@shared/schema";
+import { AUCTION_CATEGORIES, type Player, type Team, type Match, type AuctionState, type TournamentSettings, type AuctionCategory } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import { QRCodeSVG } from "qrcode.react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -389,8 +389,16 @@ function AdminDashboard() {
               <CardHeader className="flex flex-row items-center justify-between gap-4">
                 <div>
                   <CardTitle>Auction Control</CardTitle>
-                  <CardDescription>
+                  <CardDescription className="flex items-center gap-2 flex-wrap">
                     Status: <Badge variant="outline" className="ml-2">{auctionState?.status || "not_started"}</Badge>
+                    {auctionState?.currentCategory && (
+                      <Badge 
+                        className="ml-2 bg-gradient-to-r from-purple-500 to-orange-500 text-white border-0"
+                        data-testid="admin-category-badge"
+                      >
+                        {AUCTION_CATEGORIES[auctionState.currentCategory as AuctionCategory]} ({auctionState.currentCategory} pts)
+                      </Badge>
+                    )}
                   </CardDescription>
                 </div>
                 <AlertDialog>

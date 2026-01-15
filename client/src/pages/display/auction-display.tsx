@@ -2,11 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 import { useState, useEffect, useCallback } from "react";
-import { Gavel, Zap, Target, Shield, Star, TrendingUp, Wallet } from "lucide-react";
+import { Gavel, Zap, Target, Shield, Star, TrendingUp, Wallet, Crown } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import type { Team, Player, AuctionState } from "@shared/schema";
+import { AUCTION_CATEGORIES, type Team, type Player, type AuctionState, type AuctionCategory } from "@shared/schema";
 
 export default function AuctionDisplay() {
   const [showSold, setShowSold] = useState(false);
@@ -89,6 +89,21 @@ export default function AuctionDisplay() {
     }
   };
 
+  const getCategoryName = (category?: string | null) => {
+    if (!category) return null;
+    return AUCTION_CATEGORIES[category as AuctionCategory] || category;
+  };
+
+  const getCategoryColor = (category?: string | null) => {
+    switch (category) {
+      case "3000": return "from-yellow-400 via-amber-500 to-orange-500";
+      case "2500": return "from-purple-400 via-purple-500 to-purple-600";
+      case "2000": return "from-cyan-400 via-cyan-500 to-blue-500";
+      case "1500": return "from-emerald-400 via-emerald-500 to-green-600";
+      default: return "from-gray-400 to-gray-600";
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0e1a] text-white overflow-hidden relative">
       <div className="absolute inset-0 auction-spotlight" />
@@ -107,6 +122,26 @@ export default function AuctionDisplay() {
               </Badge>
             </div>
           </div>
+          {auctionState?.status === "in_progress" && auctionState?.currentCategory && (
+            <motion.div
+              key={auctionState.currentCategory}
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5 }}
+              className="flex items-center gap-3"
+              data-testid="category-badge"
+            >
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r ${getCategoryColor(auctionState.currentCategory)} shadow-lg`}>
+                <Crown className="w-5 h-5 text-white" />
+                <span className="font-display text-lg text-white tracking-wide">
+                  {getCategoryName(auctionState.currentCategory)}
+                </span>
+                <Badge className="bg-white/20 text-white border-0 ml-2">
+                  {auctionState.currentCategory} pts
+                </Badge>
+              </div>
+            </motion.div>
+          )}
         </div>
       </div>
 
