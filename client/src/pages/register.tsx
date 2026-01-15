@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
-import { Check, Upload, User, Target, CircleDot, Loader2 } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Check, Upload, User, Target, CircleDot, Loader2, Mail, Phone, MapPin, Shirt, DollarSign, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,11 +10,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { playerRegistrationSchema, type PlayerRegistration } from "@shared/schema";
+import { playerRegistrationSchema, type PlayerRegistration, type TournamentSettings } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import imageCompression from "browser-image-compression";
+import { QRCodeSVG } from "qrcode.react";
 
 const roles = [
   { value: "Batsman", icon: Target, color: "text-orange-500", bg: "bg-orange-500/20" },
@@ -22,19 +24,28 @@ const roles = [
   { value: "All-rounder", icon: User, color: "text-emerald-500", bg: "bg-emerald-500/20" },
 ] as const;
 
+const tshirtSizes = ["S", "M", "L", "XL"] as const;
+
 export default function Register() {
   const { toast } = useToast();
   const [photoPreview, setPhotoPreview] = useState<string>("");
   const [isSuccess, setIsSuccess] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
 
+  const { data: settings } = useQuery<TournamentSettings>({
+    queryKey: ["/api/settings"],
+  });
+
   const form = useForm<PlayerRegistration>({
     resolver: zodResolver(playerRegistrationSchema),
     defaultValues: {
       name: "",
+      email: "",
+      phone: "",
       mobile: "",
       address: "",
       role: "Batsman",
+      tshirtSize: "M",
       battingRating: 5,
       bowlingRating: 5,
       fieldingRating: 5,
@@ -99,23 +110,117 @@ export default function Register() {
   };
 
   if (isSuccess) {
+    const registrationFee = settings?.registrationFee || 25;
+    const hasZelle = settings?.zellePhone || settings?.zelleEmail;
+    const hasCashApp = settings?.cashappId;
+    const hasVenmo = settings?.venmoId;
+
     return (
-      <div className="min-h-screen pt-24 pb-12 px-4 flex items-center justify-center">
-        <Card className="max-w-md w-full text-center">
-          <CardContent className="pt-12 pb-8">
-            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-emerald-500/20 flex items-center justify-center">
-              <Check className="w-10 h-10 text-emerald-500" />
-            </div>
-            <h2 className="font-display text-4xl mb-4">You're In!</h2>
-            <p className="text-muted-foreground mb-6">
-              Your registration has been submitted successfully. 
-              Watch the auction to see which team picks you!
-            </p>
+      <div className="min-h-screen pt-24 pb-12 px-4">
+        <div className="max-w-2xl mx-auto">
+          <Card className="mb-6">
+            <CardContent className="pt-8 pb-6 text-center">
+              <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                <Check className="w-10 h-10 text-emerald-500" />
+              </div>
+              <h2 className="font-display text-4xl mb-4">You're In!</h2>
+              <p className="text-muted-foreground mb-2">
+                Your registration has been submitted successfully!
+              </p>
+              <p className="text-muted-foreground">
+                Please complete the payment below to confirm your spot in the auction.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-primary" />
+                Payment Required
+              </CardTitle>
+              <CardDescription>
+                Registration Fee: <span className="font-bold text-foreground">${registrationFee}</span>
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {hasZelle && (
+                <div className="p-4 rounded-md border border-border bg-muted/30">
+                  <h4 className="font-semibold mb-2 flex items-center gap-2">
+                    <CreditCard className="w-4 h-4" />
+                    Zelle
+                  </h4>
+                  <div className="space-y-1 text-sm text-muted-foreground">
+                    {settings?.zellePhone && <p>Phone: {settings.zellePhone}</p>}
+                    {settings?.zelleEmail && <p>Email: {settings.zelleEmail}</p>}
+                  </div>
+                  {settings?.zelleQrUrl && (
+                    <div className="mt-3 flex justify-center">
+                      <div className="bg-white p-2 rounded-md">
+                        <QRCodeSVG value={settings.zelleQrUrl} size={120} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {hasCashApp && (
+                <div className="p-4 rounded-md border border-border bg-muted/30">
+                  <h4 className="font-semibold mb-2 flex items-center gap-2">
+                    <CreditCard className="w-4 h-4" />
+                    Cash App
+                  </h4>
+                  <p className="text-sm text-muted-foreground">ID: {settings?.cashappId}</p>
+                  {settings?.cashappQrUrl && (
+                    <div className="mt-3 flex justify-center">
+                      <div className="bg-white p-2 rounded-md">
+                        <QRCodeSVG value={settings.cashappQrUrl} size={120} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {hasVenmo && (
+                <div className="p-4 rounded-md border border-border bg-muted/30">
+                  <h4 className="font-semibold mb-2 flex items-center gap-2">
+                    <CreditCard className="w-4 h-4" />
+                    Venmo
+                  </h4>
+                  <p className="text-sm text-muted-foreground">ID: {settings?.venmoId}</p>
+                  {settings?.venmoQrUrl && (
+                    <div className="mt-3 flex justify-center">
+                      <div className="bg-white p-2 rounded-md">
+                        <QRCodeSVG value={settings.venmoQrUrl} size={120} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!hasZelle && !hasCashApp && !hasVenmo && (
+                <div className="p-4 rounded-md border border-border bg-muted/30 text-center">
+                  <p className="text-muted-foreground">
+                    Payment methods will be announced soon. Please check back later!
+                  </p>
+                </div>
+              )}
+
+              <div className="p-4 rounded-md border border-primary/30 bg-primary/5 text-center">
+                <p className="text-sm">
+                  After payment, your registration will be verified by the admin.
+                  You'll be eligible for the auction once verified!
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex justify-center">
             <Button onClick={() => setIsSuccess(false)} data-testid="button-register-another">
               Register Another Player
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     );
   }
@@ -201,23 +306,98 @@ export default function Register() {
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="mobile"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Mobile Number</FormLabel>
-                      <FormControl>
-                        <Input 
-                          placeholder="10-digit mobile number" 
-                          {...field}
-                          data-testid="input-mobile"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2">
+                          <Mail className="w-4 h-4" />
+                          Email
+                        </FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="email"
+                            placeholder="your@email.com" 
+                            {...field}
+                            data-testid="input-email"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2">
+                          <Phone className="w-4 h-4" />
+                          Phone
+                        </FormLabel>
+                        <FormControl>
+                          <Input 
+                            placeholder="Contact number" 
+                            {...field}
+                            data-testid="input-phone"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="mobile"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Mobile Number</FormLabel>
+                        <FormControl>
+                          <Input 
+                            placeholder="10-digit mobile number" 
+                            {...field}
+                            data-testid="input-mobile"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="tshirtSize"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2">
+                          <Shirt className="w-4 h-4" />
+                          T-Shirt Size
+                        </FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="input-tshirt-size">
+                              <SelectValue placeholder="Select size" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {tshirtSizes.map((size) => (
+                              <SelectItem key={size} value={size}>
+                                {size}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 <FormField
                   control={form.control}
