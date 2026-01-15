@@ -2,11 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 import { useState, useEffect, useCallback } from "react";
-import { Gavel, Zap, Target, Shield, Star, TrendingUp, Wallet, Crown } from "lucide-react";
+import { Gavel, Zap, Target, Shield, Star, TrendingUp, Wallet, Crown, Megaphone } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { AUCTION_CATEGORIES, type Team, type Player, type AuctionState, type AuctionCategory } from "@shared/schema";
+import { AUCTION_CATEGORIES, type Team, type Player, type AuctionState, type AuctionCategory, type Broadcast } from "@shared/schema";
 
 export default function AuctionDisplay() {
   const [showSold, setShowSold] = useState(false);
@@ -28,6 +28,11 @@ export default function AuctionDisplay() {
   const { data: players } = useQuery<Player[]>({
     queryKey: ["/api/players"],
     refetchInterval: 1000,
+  });
+
+  const { data: broadcasts } = useQuery<Broadcast[]>({
+    queryKey: ["/api/broadcasts/active"],
+    refetchInterval: 5000,
   });
 
   const currentPlayer = players?.find(p => p.id === auctionState?.currentPlayerId);
@@ -378,6 +383,39 @@ export default function AuctionDisplay() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Broadcast Ticker */}
+      {broadcasts && broadcasts.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-purple-900/95 via-black/95 to-purple-900/95 border-t border-purple-500/30 z-40">
+          <div className="flex items-center">
+            <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600">
+              <Megaphone className="w-5 h-5 text-white" />
+              <span className="font-bold text-white text-sm uppercase tracking-wider">Live</span>
+            </div>
+            <div className="overflow-hidden flex-1 py-2">
+              <motion.div
+                className="flex whitespace-nowrap"
+                animate={{ x: [0, -1000] }}
+                transition={{
+                  x: {
+                    repeat: Infinity,
+                    repeatType: "loop",
+                    duration: 20,
+                    ease: "linear",
+                  },
+                }}
+              >
+                {[...broadcasts, ...broadcasts].map((broadcast, idx) => (
+                  <span key={`broadcast-ticker-${idx}-${broadcast.id}`} className="inline-flex items-center mx-8">
+                    <span className="text-purple-400 font-medium mr-2">{broadcast.title}:</span>
+                    <span className="text-white">{broadcast.content}</span>
+                  </span>
+                ))}
+              </motion.div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
