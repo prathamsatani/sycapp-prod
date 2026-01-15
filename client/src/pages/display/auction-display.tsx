@@ -2,10 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 import { useState, useEffect, useCallback } from "react";
-import { Gavel, Zap, Target, Shield, Star, TrendingUp, Wallet, Crown, Megaphone } from "lucide-react";
+import { Gavel, Zap, Target, Shield, Star, TrendingUp, Wallet, Crown, Megaphone, X, Users, Trophy, ChevronRight } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { AUCTION_CATEGORIES, type Team, type Player, type AuctionState, type AuctionCategory, type Broadcast } from "@shared/schema";
 
 export default function AuctionDisplay() {
@@ -14,6 +16,10 @@ export default function AuctionDisplay() {
   const [lastSoldTeam, setLastSoldTeam] = useState<Team | null>(null);
   const [lastSoldPrice, setLastSoldPrice] = useState(0);
   const [previousPlayerId, setPreviousPlayerId] = useState<string | null>(null);
+  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [showTeamModal, setShowTeamModal] = useState(false);
+  const [showPlayerModal, setShowPlayerModal] = useState(false);
 
   const { data: auctionState } = useQuery<AuctionState>({
     queryKey: ["/api/auction/state"],
@@ -152,37 +158,53 @@ export default function AuctionDisplay() {
 
       <div className="pt-24 pb-8 px-8">
         <div className="mb-6">
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {teams?.map((team) => (
-              <motion.div
-                key={team.id}
-                animate={{
-                  scale: currentBiddingTeam?.id === team.id ? 1.05 : 1,
-                  borderColor: currentBiddingTeam?.id === team.id ? team.primaryColor : "transparent",
-                }}
-                className="shrink-0 bg-white/5 rounded-xl p-3 border-2 min-w-[140px]"
-                style={{ borderColor: currentBiddingTeam?.id === team.id ? team.primaryColor : "transparent" }}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <div 
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-display text-sm"
-                    style={{ backgroundColor: team.primaryColor }}
+          <ScrollArea className="w-full">
+            <div className="flex gap-3 pb-4 px-1">
+              {teams?.map((team) => {
+                const teamPlayers = players?.filter(p => p.teamId === team.id) || [];
+                return (
+                  <motion.div
+                    key={team.id}
+                    animate={{
+                      scale: currentBiddingTeam?.id === team.id ? 1.05 : 1,
+                      borderColor: currentBiddingTeam?.id === team.id ? team.primaryColor : "transparent",
+                    }}
+                    whileHover={{ scale: 1.02, y: -2 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => {
+                      setSelectedTeam(team);
+                      setShowTeamModal(true);
+                    }}
+                    className="shrink-0 bg-white/5 rounded-xl p-3 border-2 min-w-[160px] cursor-pointer transition-all hover:bg-white/10"
+                    style={{ borderColor: currentBiddingTeam?.id === team.id ? team.primaryColor : "transparent" }}
+                    data-testid={`team-card-${team.id}`}
                   >
-                    {team.shortName}
-                  </div>
-                  <span className="font-medium text-sm">{team.shortName}</span>
-                </div>
-                <div className="flex items-center gap-1 text-xs text-gray-400 mb-1">
-                  <Wallet className="w-3 h-3" />
-                  <span>{team.remainingBudget.toLocaleString()}</span>
-                </div>
-                <Progress 
-                  value={((team.budget - team.remainingBudget) / team.budget) * 100} 
-                  className="h-1" 
-                />
-              </motion.div>
-            ))}
-          </div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div 
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-display text-sm"
+                        style={{ backgroundColor: team.primaryColor }}
+                      >
+                        {team.shortName}
+                      </div>
+                      <div className="flex-1">
+                        <span className="font-medium text-sm block">{team.shortName}</span>
+                        <span className="text-xs text-gray-500">{teamPlayers.length} players</span>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-gray-400 mb-1">
+                      <Wallet className="w-3 h-3" />
+                      <span>{team.remainingBudget.toLocaleString()} pts</span>
+                    </div>
+                    <Progress 
+                      value={((team.budget - team.remainingBudget) / team.budget) * 100} 
+                      className="h-1.5" 
+                    />
+                  </motion.div>
+                );
+              })}
+            </div>
+          </ScrollArea>
         </div>
 
         <AnimatePresence mode="wait">
@@ -458,6 +480,235 @@ export default function AuctionDisplay() {
           </div>
         </div>
       )}
+
+      {/* Team Roster Modal */}
+      <Dialog open={showTeamModal} onOpenChange={setShowTeamModal}>
+        <DialogContent className="bg-[#0a0e1a] border-white/20 text-white max-w-2xl max-h-[85vh]">
+          {selectedTeam && (
+            <>
+              <DialogHeader className="pb-4">
+                <div className="flex items-center gap-4">
+                  <div 
+                    className="w-16 h-16 rounded-xl flex items-center justify-center text-white font-display text-2xl"
+                    style={{ backgroundColor: selectedTeam.primaryColor }}
+                  >
+                    {selectedTeam.shortName}
+                  </div>
+                  <div>
+                    <DialogTitle className="text-2xl font-display text-white">{selectedTeam.name}</DialogTitle>
+                    <div className="flex items-center gap-4 mt-2">
+                      <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
+                        <Wallet className="w-3 h-3 mr-1" />
+                        {selectedTeam.remainingBudget.toLocaleString()} pts remaining
+                      </Badge>
+                      <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
+                        <Users className="w-3 h-3 mr-1" />
+                        {players?.filter(p => p.teamId === selectedTeam.id).length || 0} players
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              </DialogHeader>
+              
+              <div className="space-y-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                    <Trophy className="w-4 h-4" />
+                    Team Roster
+                  </h3>
+                  <span className="text-xs text-gray-500">
+                    Spent: {(selectedTeam.budget - selectedTeam.remainingBudget).toLocaleString()} pts
+                  </span>
+                </div>
+                
+                <ScrollArea className="h-[400px] pr-4">
+                  <div className="space-y-2">
+                    {players?.filter(p => p.teamId === selectedTeam.id).length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p>No players bought yet</p>
+                      </div>
+                    ) : (
+                      players?.filter(p => p.teamId === selectedTeam.id)
+                        .sort((a, b) => (b.soldPrice || 0) - (a.soldPrice || 0))
+                        .map((player) => (
+                          <motion.div
+                            key={player.id}
+                            whileHover={{ scale: 1.01, x: 4 }}
+                            whileTap={{ scale: 0.99 }}
+                            onClick={() => {
+                              setSelectedPlayer(player);
+                              setShowPlayerModal(true);
+                            }}
+                            className="flex items-center gap-3 p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors"
+                            data-testid={`roster-player-${player.id}`}
+                          >
+                            <Avatar className="w-12 h-12 border-2" style={{ borderColor: selectedTeam.primaryColor }}>
+                              <AvatarImage src={player.photoUrl} className="object-cover" />
+                              <AvatarFallback className="bg-gradient-to-br from-purple-600 to-orange-500 text-white font-display">
+                                {player.name.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-white truncate">{player.name}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <Badge variant="outline" className="text-xs border-gray-600 text-gray-400">
+                                  {player.role}
+                                </Badge>
+                                {player.isCaptain && (
+                                  <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs">C</Badge>
+                                )}
+                                {player.isViceCaptain && (
+                                  <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">VC</Badge>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-display text-lg text-emerald-400">{player.soldPrice?.toLocaleString()}</p>
+                              <p className="text-xs text-gray-500">pts</p>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-gray-500" />
+                          </motion.div>
+                        ))
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Player Details Modal */}
+      <Dialog open={showPlayerModal} onOpenChange={setShowPlayerModal}>
+        <DialogContent className="bg-[#0a0e1a] border-white/20 text-white max-w-lg max-h-[85vh]">
+          {selectedPlayer && (
+            <>
+              <DialogHeader className="pb-2">
+                <div className="flex items-center gap-4">
+                  <Avatar className="w-20 h-20 border-4 border-purple-500/50">
+                    <AvatarImage src={selectedPlayer.photoUrl} className="object-cover" />
+                    <AvatarFallback className="text-2xl font-display bg-gradient-to-br from-purple-600 to-orange-500">
+                      {selectedPlayer.name.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <DialogTitle className="text-2xl font-display text-white">{selectedPlayer.name}</DialogTitle>
+                    <Badge className="mt-2 bg-gradient-to-r from-purple-600 to-orange-500 border-0 text-white">
+                      {getRoleIcon(selectedPlayer.role)}
+                      <span className="ml-2 uppercase">{selectedPlayer.role}</span>
+                    </Badge>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-4 mt-4">
+                {/* Player Ratings */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-orange-500/20 rounded-lg p-3 text-center">
+                    <Zap className="w-5 h-5 mx-auto text-orange-400 mb-1" />
+                    <p className="text-2xl font-display text-orange-400">{selectedPlayer.battingRating}</p>
+                    <p className="text-xs text-gray-400">BATTING</p>
+                  </div>
+                  <div className="bg-purple-500/20 rounded-lg p-3 text-center">
+                    <Target className="w-5 h-5 mx-auto text-purple-400 mb-1" />
+                    <p className="text-2xl font-display text-purple-400">{selectedPlayer.bowlingRating}</p>
+                    <p className="text-xs text-gray-400">BOWLING</p>
+                  </div>
+                  <div className="bg-emerald-500/20 rounded-lg p-3 text-center">
+                    <Shield className="w-5 h-5 mx-auto text-emerald-400 mb-1" />
+                    <p className="text-2xl font-display text-emerald-400">{selectedPlayer.fieldingRating}</p>
+                    <p className="text-xs text-gray-400">FIELDING</p>
+                  </div>
+                </div>
+
+                {/* Price Info */}
+                <div className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                  <div>
+                    <p className="text-xs text-gray-400">BASE PRICE</p>
+                    <p className="font-display text-xl text-gray-300">{selectedPlayer.basePoints?.toLocaleString()}</p>
+                  </div>
+                  {selectedPlayer.soldPrice && (
+                    <div className="text-right">
+                      <p className="text-xs text-gray-400">SOLD FOR</p>
+                      <p className="font-display text-xl text-emerald-400">{selectedPlayer.soldPrice.toLocaleString()}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Team Info */}
+                {selectedPlayer.teamId && (
+                  <div className="p-3 bg-white/5 rounded-lg">
+                    <p className="text-xs text-gray-400 mb-2">BOUGHT BY</p>
+                    <div className="flex items-center gap-3">
+                      {(() => {
+                        const playerTeam = teams?.find(t => t.id === selectedPlayer.teamId);
+                        return playerTeam ? (
+                          <>
+                            <div 
+                              className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-display"
+                              style={{ backgroundColor: playerTeam.primaryColor }}
+                            >
+                              {playerTeam.shortName}
+                            </div>
+                            <span className="font-medium">{playerTeam.name}</span>
+                          </>
+                        ) : null;
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {/* Auction History - Show current bid history if this is the current player in auction */}
+                {auctionState?.currentPlayerId === selectedPlayer.id && auctionState.bidHistory && auctionState.bidHistory.length > 0 && (
+                  <div className="p-3 bg-white/5 rounded-lg">
+                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4" />
+                      Live Bid History
+                    </h3>
+                    <ScrollArea className="h-[150px]">
+                      <div className="space-y-2">
+                        {[...auctionState.bidHistory].reverse().map((bid, index) => {
+                          const bidTeam = teams?.find(t => t.id === bid.teamId);
+                          return (
+                            <div 
+                              key={`${bid.teamId}-${bid.amount}-${index}`}
+                              className={`flex items-center justify-between p-2 rounded-lg ${index === 0 ? 'bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30' : 'bg-white/5'}`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  className="w-6 h-6 rounded flex items-center justify-center text-white text-xs font-display"
+                                  style={{ backgroundColor: bidTeam?.primaryColor || '#666' }}
+                                >
+                                  {bidTeam?.shortName || '??'}
+                                </div>
+                                <span className="text-sm text-white">{bidTeam?.name || 'Unknown'}</span>
+                              </div>
+                              <span className={`font-display ${index === 0 ? 'text-yellow-400' : 'text-gray-300'}`}>
+                                {bid.amount.toLocaleString()}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                )}
+
+                {/* Category */}
+                {selectedPlayer.category && (
+                  <div className="flex items-center justify-center">
+                    <Badge className={`bg-gradient-to-r ${getCategoryColor(selectedPlayer.category)} text-white border-0 px-4 py-1`}>
+                      <Crown className="w-4 h-4 mr-2" />
+                      {getCategoryName(selectedPlayer.category)}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
