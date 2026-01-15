@@ -302,9 +302,9 @@ function AdminDashboard() {
   };
 
   const getBidIncrement = (currentBid: number) => {
-    if (currentBid <= 5000) return 200;
-    if (currentBid <= 10000) return 500;
-    return 1000;
+    // Up to 4000 → +100, Above 4000 → +200
+    if (currentBid <= 4000) return 100;
+    return 200;
   };
 
   return (
@@ -1377,6 +1377,10 @@ function LiveScoringPanel({
 function PlayerApprovalPanel({ players, isLoading }: { players?: Player[]; isLoading: boolean }) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"pending" | "approved" | "rejected">("pending");
+  const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [editBatting, setEditBatting] = useState("5");
+  const [editBowling, setEditBowling] = useState("5");
+  const [editFielding, setEditFielding] = useState("5");
 
   const pendingPlayers = players?.filter(p => p.approvalStatus === "pending") || [];
   const approvedPlayers = players?.filter(p => p.approvalStatus === "approved") || [];
@@ -1434,6 +1438,43 @@ function PlayerApprovalPanel({ players, isLoading }: { players?: Player[]; isLoa
     },
   });
 
+  const editRatingsMutation = useMutation({
+    mutationFn: async ({ playerId, battingRating, bowlingRating, fieldingRating }: { 
+      playerId: string; 
+      battingRating: number; 
+      bowlingRating: number; 
+      fieldingRating: number 
+    }) => {
+      return apiRequest("PATCH", `/api/players/${playerId}`, { battingRating, bowlingRating, fieldingRating });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/players"] });
+      setEditingPlayer(null);
+      toast({ title: "Player ratings updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update ratings", variant: "destructive" });
+    },
+  });
+
+  const openEditDialog = (player: Player) => {
+    setEditingPlayer(player);
+    setEditBatting(player.battingRating?.toString() || "5");
+    setEditBowling(player.bowlingRating?.toString() || "5");
+    setEditFielding(player.fieldingRating?.toString() || "5");
+  };
+
+  const handleSaveRatings = () => {
+    if (editingPlayer) {
+      editRatingsMutation.mutate({
+        playerId: editingPlayer.id,
+        battingRating: parseInt(editBatting) || 5,
+        bowlingRating: parseInt(editBowling) || 5,
+        fieldingRating: parseInt(editFielding) || 5,
+      });
+    }
+  };
+
   const renderPlayerCard = (player: Player, showActions: boolean = true) => (
     <Card key={player.id} className="p-4" data-testid={`approval-player-${player.id}`}>
       <div className="flex items-start gap-4">
@@ -1473,6 +1514,15 @@ function PlayerApprovalPanel({ players, isLoading }: { players?: Player[]; isLoa
         </div>
         {showActions && activeTab === "pending" && (
           <div className="flex flex-col gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => openEditDialog(player)}
+              data-testid={`button-edit-ratings-${player.id}`}
+            >
+              <Edit className="w-4 h-4 mr-1" />
+              Edit Ratings
+            </Button>
             <Button
               size="sm"
               className="bg-emerald-500 hover:bg-emerald-600"
@@ -1627,6 +1677,84 @@ function PlayerApprovalPanel({ players, isLoading }: { players?: Player[]; isLoa
           </TabsContent>
         </Tabs>
       </CardContent>
+
+      {/* Edit Ratings Dialog */}
+      <Dialog open={!!editingPlayer} onOpenChange={(open) => !open && setEditingPlayer(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Player Ratings</DialogTitle>
+          </DialogHeader>
+          {editingPlayer && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-md">
+                <Avatar className="h-12 w-12">
+                  <AvatarImage src={editingPlayer.photoUrl} alt={editingPlayer.name} />
+                  <AvatarFallback>{editingPlayer.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-semibold">{editingPlayer.name}</p>
+                  <p className="text-sm text-muted-foreground">{editingPlayer.role}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-batting">Batting (1-10)</Label>
+                  <Input
+                    id="edit-batting"
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={editBatting}
+                    onChange={(e) => setEditBatting(e.target.value)}
+                    data-testid="input-edit-batting"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-bowling">Bowling (1-10)</Label>
+                  <Input
+                    id="edit-bowling"
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={editBowling}
+                    onChange={(e) => setEditBowling(e.target.value)}
+                    data-testid="input-edit-bowling"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-fielding">Fielding (1-10)</Label>
+                  <Input
+                    id="edit-fielding"
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={editFielding}
+                    onChange={(e) => setEditFielding(e.target.value)}
+                    data-testid="input-edit-fielding"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingPlayer(null)}>
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleSaveRatings} 
+                  disabled={editRatingsMutation.isPending}
+                  data-testid="button-save-ratings"
+                >
+                  {editRatingsMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
+                  Save Ratings
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
