@@ -681,15 +681,31 @@ export async function registerRoutes(
       }
       
       const newOversStr = `${newOvers}.${newBalls}`;
-      let newScore = (currentScore || 0) + (runs || 0);
+      
+      // Check if current over is the power over
+      const isPowerOver = match.powerOverActive && 
+                          match.powerOverNumber === overs + 1 && 
+                          match.powerOverInnings === match.currentInnings;
+      
+      // Power Over: Runs are doubled
+      let effectiveRuns = runs || 0;
+      if (isPowerOver && effectiveRuns > 0) {
+        effectiveRuns = effectiveRuns * 2;
+      }
+      
+      let newScore = (currentScore || 0) + effectiveRuns;
       let newWickets = currentWickets || 0;
       
       if (extraType) {
         newScore += 1;
       }
       
+      // Power Over: Wicket costs -5 points
       if (isWicket) {
         newWickets += 1;
+        if (isPowerOver) {
+          newScore = Math.max(0, newScore - 5);
+        }
       }
       
       const isInningsOver = newOvers >= 6 || newWickets >= 10;
@@ -739,6 +755,41 @@ export async function registerRoutes(
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to record ball" });
+    }
+  });
+
+  // Set power over for a match
+  app.post("/api/matches/:id/power-over", async (req, res) => {
+    try {
+      const match = await storage.getMatch(req.params.id);
+      if (!match || match.status !== "live") {
+        return res.status(400).json({ error: "Match not live" });
+      }
+      
+      const { overNumber, innings } = req.body;
+      
+      if (!overNumber || !innings) {
+        return res.status(400).json({ error: "Over number and innings required" });
+      }
+      
+      if (overNumber < 1 || overNumber > 6) {
+        return res.status(400).json({ error: "Over number must be between 1 and 6" });
+      }
+      
+      if (innings < 1 || innings > 2) {
+        return res.status(400).json({ error: "Innings must be 1 or 2" });
+      }
+      
+      const updatedMatch = await storage.updateMatch(req.params.id, {
+        powerOverActive: true,
+        powerOverNumber: overNumber,
+        powerOverInnings: innings,
+      });
+      
+      res.json(updatedMatch);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Failed to set power over" });
     }
   });
 

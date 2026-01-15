@@ -282,6 +282,16 @@ function AdminDashboard() {
     },
   });
 
+  const setPowerOverMutation = useMutation({
+    mutationFn: async ({ matchId, overNumber, innings }: { matchId: string; overNumber: number; innings: number }) => {
+      return apiRequest("POST", `/api/matches/${matchId}/power-over`, { overNumber, innings });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/matches"] });
+      toast({ title: "Power Over set!" });
+    },
+  });
+
   const currentPlayer = players?.find(p => p.id === auctionState?.currentPlayerId);
   const currentBiddingTeam = teams?.find(t => t.id === auctionState?.currentBiddingTeamId);
   const liveMatch = matches?.find(m => m.status === "live");
@@ -872,6 +882,11 @@ function AdminDashboard() {
                 teams={teams || []} 
                 onRecordBall={(data) => recordBallMutation.mutate({ matchId: liveMatch.id, ...data })}
                 isRecording={recordBallMutation.isPending}
+                onSetPowerOver={(overNumber) => setPowerOverMutation.mutate({ 
+                  matchId: liveMatch.id, 
+                  overNumber, 
+                  innings: liveMatch.currentInnings ?? 1 
+                })}
               />
             ) : (
               <Card>
@@ -1171,15 +1186,26 @@ function LiveScoringPanel({
   match, 
   teams, 
   onRecordBall,
-  isRecording
+  isRecording,
+  onSetPowerOver
 }: { 
   match: Match; 
   teams: Team[]; 
   onRecordBall: (data: { runs: number; extraType?: string; isWicket?: boolean; wicketType?: string }) => void;
   isRecording: boolean;
+  onSetPowerOver: (overNumber: number) => void;
 }) {
   const team1 = teams.find(t => t.id === match.team1Id);
   const team2 = teams.find(t => t.id === match.team2Id);
+  
+  // Calculate current over number
+  const currentOvers = match.currentInnings === 1 ? match.team1Overs : match.team2Overs;
+  const [overs] = (currentOvers || "0.0").split(".").map(Number);
+  const currentOverNumber = overs + 1;
+  
+  // Check if power over is active for current innings
+  const isPowerOverActive = match.powerOverActive && match.powerOverInnings === match.currentInnings;
+  const isPowerOverNow = isPowerOverActive && match.powerOverNumber === currentOverNumber;
 
   const recordRuns = (runs: number) => {
     onRecordBall({ runs });
@@ -1198,10 +1224,18 @@ function LiveScoringPanel({
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span>Live: {team1?.shortName} vs {team2?.shortName}</span>
-          <Badge className="bg-destructive/20 text-destructive gap-1">
-            <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
-            LIVE
-          </Badge>
+          <div className="flex items-center gap-2">
+            {isPowerOverNow && (
+              <Badge className="bg-amber-500/20 text-amber-500 animate-pulse gap-1">
+                <Zap className="w-3 h-3" />
+                POWER OVER
+              </Badge>
+            )}
+            <Badge className="bg-destructive/20 text-destructive gap-1">
+              <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
+              LIVE
+            </Badge>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -1220,6 +1254,46 @@ function LiveScoringPanel({
               <span className="text-lg text-muted-foreground ml-2">({match.team2Overs})</span>
             </p>
           </div>
+        </div>
+
+        {/* Power Over Selection */}
+        <div className="p-4 rounded-md border border-amber-500/30 bg-amber-500/5">
+          <Label className="text-sm text-amber-600 mb-2 block flex items-center gap-2">
+            <Zap className="w-4 h-4" />
+            Power Over (Innings {match.currentInnings})
+          </Label>
+          {isPowerOverActive ? (
+            <div className="flex items-center gap-2">
+              <Badge className="bg-amber-500 text-white">
+                Over {match.powerOverNumber} is Power Over
+              </Badge>
+              <p className="text-xs text-muted-foreground">
+                Runs 2x, Wicket -5 points
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {[1, 2, 3, 4, 5, 6].map((over) => (
+                <Button
+                  key={over}
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "h-10 w-10 border-amber-500/30",
+                    over < currentOverNumber && "opacity-50 cursor-not-allowed"
+                  )}
+                  disabled={over < currentOverNumber}
+                  onClick={() => onSetPowerOver(over)}
+                  data-testid={`button-power-over-${over}`}
+                >
+                  {over}
+                </Button>
+              ))}
+              <p className="w-full text-xs text-muted-foreground mt-1">
+                Select which over will be the Power Over
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">
