@@ -1098,8 +1098,17 @@ export async function registerRoutes(
       const { runs, extraType, isWicket, wicketType, dismissedPlayerId } = req.body;
       
       // Validate batsmen and bowler are set
+      // Allow scoring with just striker if 7 wickets (last man standing - only 1 batsman remains)
+      const currentWicketsForValidation = match.currentInnings === 1 ? match.team1Wickets : match.team2Wickets;
+      const isLastManStandingMode = (currentWicketsForValidation || 0) >= 7; // 7 wickets down = only 1 batsman left
+      
       if (!match.strikerId || !match.currentBowlerId) {
         return res.status(400).json({ error: "Batsmen and bowler must be selected first" });
+      }
+      
+      // Need non-striker unless it's last-man-standing (7 wickets)
+      if (!match.nonStrikerId && !isLastManStandingMode) {
+        return res.status(400).json({ error: "Both batsmen must be selected" });
       }
       
       const isFirstInnings = match.currentInnings === 1;
@@ -1146,6 +1155,14 @@ export async function registerRoutes(
         newScore += 1;
       }
       
+      // 8 players per team = max 7 wickets allowed
+      const MAX_WICKETS = 7;
+      
+      // Prevent wickets beyond 7 (last man standing can't be out)
+      if (isWicket && (currentWickets || 0) >= MAX_WICKETS) {
+        return res.status(400).json({ error: "Cannot take more wickets - last man standing" });
+      }
+      
       // Power Over: Wicket costs -5 points
       if (isWicket) {
         newWickets += 1;
@@ -1154,23 +1171,28 @@ export async function registerRoutes(
         }
       }
       
-      // 8 players per team = max 7 wickets (last man standing)
-      const MAX_WICKETS = 7;
-      const isInningsOver = newOvers >= 6 || newWickets >= MAX_WICKETS;
+      // Cap wickets at 7 (shouldn't happen due to guard above, but just in case)
+      newWickets = Math.min(newWickets, MAX_WICKETS);
+      
+      // Innings ends at 6 overs. 7 wickets = last man standing, can still bat.
+      // Innings ends when overs complete. Last-man-standing (7 wickets) can continue until overs end.
+      const isInningsOver = newOvers >= 6;
       
       // Determine strike rotation
       // Strike changes on: odd runs, end of over (unless last man standing)
       let shouldRotateStrike = false;
-      const isLastManStanding = newWickets >= MAX_WICKETS - 1; // 6 wickets = last 2 batsmen
+      // Last man standing = 7 wickets down (only 1 batsman left), no strike rotation possible
+      const isLastManStanding = newWickets >= MAX_WICKETS; // 7 wickets = only 1 batsman remains
       
-      if (!isWicket && !extraType) {
+      // Only rotate strike if we have a non-striker to rotate with
+      if (!isWicket && !extraType && match.nonStrikerId && !isLastManStanding) {
         // Normal ball - rotate on odd runs
         if (actualRuns % 2 === 1) {
           shouldRotateStrike = true;
         }
       }
       
-      // End of over rotation (only if NOT last man standing)
+      // End of over rotation (only if we have 2 batsmen and NOT last man standing)
       const isEndOfOver = isLegalDelivery && newBalls === 0 && newOvers > overs;
       if (isEndOfOver && !isLastManStanding && match.nonStrikerId) {
         shouldRotateStrike = !shouldRotateStrike; // Toggle - since we may have already rotated for odd runs
@@ -1246,15 +1268,43 @@ export async function registerRoutes(
       
       let updateData: any = {};
       
-      // Handle strike rotation
-      if (shouldRotateStrike && match.nonStrikerId) {
-        updateData.strikerId = match.nonStrikerId;
-        updateData.nonStrikerId = match.strikerId;
-      }
-      
-      // If wicket, clear striker (new batsman needed) - but keep non-striker
+      // Handle wicket first (before strike rotation, as wickets override rotation logic)
       if (isWicket) {
-        updateData.strikerId = null;
+        // Determine which batsman was dismissed based on original state
+        const originalStriker = match.strikerId;
+        const originalNonStriker = match.nonStrikerId;
+        const dismissedIsStriker = !dismissedPlayerId || dismissedPlayerId === originalStriker;
+        const dismissedIsNonStriker = dismissedPlayerId && dismissedPlayerId === originalNonStriker;
+        
+        // Identify the survivor
+        const survivorId = dismissedIsStriker ? originalNonStriker : originalStriker;
+        
+        // Check if this wicket puts us in last-man-standing mode (7 wickets = only 1 batsman)
+        if (newWickets >= MAX_WICKETS) {
+          // Last man standing - survivor becomes striker, no non-striker
+          updateData.strikerId = survivorId;
+          updateData.nonStrikerId = null;
+        } else {
+          // Regular wicket - clear dismissed position, survivor stays
+          if (dismissedIsStriker) {
+            // Striker out - clear striker, non-striker stays at their end
+            updateData.strikerId = null;
+            // Non-striker stays (don't override if already set)
+          } else if (dismissedIsNonStriker) {
+            // Non-striker run out - striker stays, clear non-striker
+            updateData.nonStrikerId = null;
+            // Striker stays (don't override if already set)
+          } else {
+            // Default: assume striker dismissed
+            updateData.strikerId = null;
+          }
+        }
+      } else {
+        // No wicket - handle normal strike rotation
+        if (shouldRotateStrike && match.nonStrikerId) {
+          updateData.strikerId = match.nonStrikerId;
+          updateData.nonStrikerId = match.strikerId;
+        }
       }
       
       // End of over - need new bowler
