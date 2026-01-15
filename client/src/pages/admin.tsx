@@ -380,47 +380,7 @@ function AdminDashboard() {
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Registered Players ({players?.length || 0})</CardTitle>
-                  <CardDescription>Players who have registered via the form</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {playersLoading ? (
-                    <div className="space-y-2">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Skeleton key={i} className="h-12" />
-                      ))}
-                    </div>
-                  ) : players && players.length > 0 ? (
-                    <ScrollArea className="h-[400px]">
-                      <div className="space-y-2 pr-4">
-                        {players.map((player) => (
-                          <div key={player.id} className="flex items-center gap-3 p-3 rounded-md bg-muted/50" data-testid={`reg-player-${player.id}`}>
-                            <Avatar className="h-10 w-10">
-                              <AvatarImage src={player.photoUrl} alt={player.name} />
-                              <AvatarFallback>{player.name.slice(0, 2).toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium truncate">{player.name}</p>
-                              <p className="text-xs text-muted-foreground">{player.role} | {player.mobile}</p>
-                            </div>
-                            <Badge variant="outline" className="shrink-0">
-                              {player.basePoints} pts
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  ) : (
-                    <div className="text-center py-12 text-muted-foreground">
-                      <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>No players registered yet</p>
-                      <p className="text-sm mt-1">Share the QR code to start registrations</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <PlayerApprovalPanel players={players} isLoading={playersLoading} />
             </div>
           </TabsContent>
 
@@ -1319,6 +1279,217 @@ function LiveScoringPanel({
             </div>
           </div>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PlayerApprovalPanel({ players, isLoading }: { players?: Player[]; isLoading: boolean }) {
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<"pending" | "approved" | "rejected">("pending");
+
+  const pendingPlayers = players?.filter(p => p.approvalStatus === "pending") || [];
+  const approvedPlayers = players?.filter(p => p.approvalStatus === "approved") || [];
+  const rejectedPlayers = players?.filter(p => p.approvalStatus === "rejected") || [];
+
+  const approveMutation = useMutation({
+    mutationFn: async (playerId: string) => {
+      return apiRequest("POST", `/api/players/${playerId}/approve`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/players"] });
+      toast({ title: "Player approved" });
+    },
+    onError: () => {
+      toast({ title: "Failed to approve player", variant: "destructive" });
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async (playerId: string) => {
+      return apiRequest("POST", `/api/players/${playerId}/reject`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/players"] });
+      toast({ title: "Player rejected" });
+    },
+    onError: () => {
+      toast({ title: "Failed to reject player", variant: "destructive" });
+    },
+  });
+
+  const verifyPaymentMutation = useMutation({
+    mutationFn: async (playerId: string) => {
+      return apiRequest("POST", `/api/players/${playerId}/verify-payment`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/players"] });
+      toast({ title: "Payment verified" });
+    },
+    onError: () => {
+      toast({ title: "Failed to verify payment", variant: "destructive" });
+    },
+  });
+
+  const renderPlayerCard = (player: Player, showActions: boolean = true) => (
+    <Card key={player.id} className="p-4" data-testid={`approval-player-${player.id}`}>
+      <div className="flex items-start gap-4">
+        <Avatar className="h-16 w-16">
+          <AvatarImage src={player.photoUrl} alt={player.name} />
+          <AvatarFallback>{player.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+        </Avatar>
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-center gap-2">
+            <p className="font-semibold">{player.name}</p>
+            <Badge variant="outline" className="text-xs">{player.role}</Badge>
+            {player.paymentStatus === "verified" && (
+              <Badge className="bg-emerald-500/20 text-emerald-600 text-xs">Paid</Badge>
+            )}
+            {player.paymentStatus === "pending" && (
+              <Badge className="bg-amber-500/20 text-amber-600 text-xs">Payment Pending</Badge>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <p>Email: {player.email || "N/A"}</p>
+            <p>Phone: {player.phone || "N/A"}</p>
+            <p>Mobile: {player.mobile}</p>
+            <p>T-Shirt: {player.tshirtSize || "N/A"}</p>
+          </div>
+          <p className="text-xs text-muted-foreground truncate">Address: {player.address}</p>
+          <div className="flex items-center gap-2 pt-1">
+            <Badge className="bg-orange-500/20 text-orange-600 text-xs">
+              Batting: {player.battingRating}
+            </Badge>
+            <Badge className="bg-purple-500/20 text-purple-600 text-xs">
+              Bowling: {player.bowlingRating}
+            </Badge>
+            <Badge className="bg-emerald-500/20 text-emerald-600 text-xs">
+              Fielding: {player.fieldingRating}
+            </Badge>
+          </div>
+        </div>
+        {showActions && activeTab === "pending" && (
+          <div className="flex flex-col gap-2">
+            <Button
+              size="sm"
+              className="bg-emerald-500 hover:bg-emerald-600"
+              onClick={() => approveMutation.mutate(player.id)}
+              disabled={approveMutation.isPending}
+              data-testid={`button-approve-${player.id}`}
+            >
+              <Check className="w-4 h-4 mr-1" />
+              Approve
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => rejectMutation.mutate(player.id)}
+              disabled={rejectMutation.isPending}
+              data-testid={`button-reject-${player.id}`}
+            >
+              <X className="w-4 h-4 mr-1" />
+              Reject
+            </Button>
+          </div>
+        )}
+        {showActions && activeTab === "approved" && player.paymentStatus !== "verified" && (
+          <Button
+            size="sm"
+            className="bg-emerald-500 hover:bg-emerald-600"
+            onClick={() => verifyPaymentMutation.mutate(player.id)}
+            disabled={verifyPaymentMutation.isPending}
+            data-testid={`button-verify-payment-${player.id}`}
+          >
+            <DollarSign className="w-4 h-4 mr-1" />
+            Verify Payment
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Player Approval</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-24" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Player Approval</CardTitle>
+        <CardDescription>Review and approve player registrations</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+          <TabsList className="grid w-full grid-cols-3 mb-4">
+            <TabsTrigger value="pending" className="gap-2" data-testid="tab-pending">
+              Pending ({pendingPlayers.length})
+            </TabsTrigger>
+            <TabsTrigger value="approved" className="gap-2" data-testid="tab-approved">
+              Approved ({approvedPlayers.length})
+            </TabsTrigger>
+            <TabsTrigger value="rejected" className="gap-2" data-testid="tab-rejected">
+              Rejected ({rejectedPlayers.length})
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="pending">
+            {pendingPlayers.length > 0 ? (
+              <ScrollArea className="h-[400px]">
+                <div className="space-y-3 pr-4">
+                  {pendingPlayers.map((player) => renderPlayerCard(player))}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No pending registrations</p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="approved">
+            {approvedPlayers.length > 0 ? (
+              <ScrollArea className="h-[400px]">
+                <div className="space-y-3 pr-4">
+                  {approvedPlayers.map((player) => renderPlayerCard(player))}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No approved players yet</p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="rejected">
+            {rejectedPlayers.length > 0 ? (
+              <ScrollArea className="h-[400px]">
+                <div className="space-y-3 pr-4">
+                  {rejectedPlayers.map((player) => renderPlayerCard(player, false))}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No rejected players</p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
   );
