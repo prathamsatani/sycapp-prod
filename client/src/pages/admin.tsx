@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Shield, Users, Gavel, Play, Settings, Plus, Trash2, Edit, Lock, Unlock, Check, X, CircleDot, Target, Loader2, QrCode, RotateCcw, Trophy, Upload, Zap, Star, Award, TrendingUp, DollarSign, CreditCard, Save, Megaphone } from "lucide-react";
+import { Shield, Users, Gavel, Play, Settings, Plus, Trash2, Edit, Lock, Unlock, Check, X, CircleDot, Target, Loader2, QrCode, RotateCcw, Trophy, Upload, Zap, Star, Award, TrendingUp, DollarSign, CreditCard, Save, Megaphone, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -1395,10 +1395,17 @@ function LiveScoringPanel({
   const battingTeamPlayers = players.filter(p => p.teamId === battingTeamId);
   const bowlingTeamPlayers = players.filter(p => p.teamId === bowlingTeamId);
 
+  // Check current wickets for last-man-standing mode
+  const currentWickets = match.currentInnings === 1 ? match.team1Wickets : match.team2Wickets;
+  const isLastManStanding = (currentWickets || 0) >= 7;
+  
   // Check if batsmen and bowler are set
-  const hasBatsmen = match.strikerId && match.nonStrikerId;
+  // In last-man-standing mode, we only need striker (no non-striker)
+  const hasBatsmen = isLastManStanding 
+    ? !!match.strikerId 
+    : (match.strikerId && match.nonStrikerId);
   const hasBowler = match.currentBowlerId;
-  const needsNewBatsman = !match.strikerId && match.nonStrikerId;
+  const needsNewBatsman = !match.strikerId && match.nonStrikerId && !isLastManStanding;
   const needsNewBowler = !match.currentBowlerId;
   const isEndOfOver = balls === 0 && overs > 0;
   const canScore = hasBatsmen && hasBowler;
@@ -1505,17 +1512,27 @@ function LiveScoringPanel({
             Current Players (Innings {match.currentInnings})
           </Label>
 
+          {/* Last Man Standing indicator */}
+          {isLastManStanding && (
+            <div className="flex items-center gap-2 p-2 rounded-md bg-orange-500/10 border border-orange-500/30">
+              <AlertTriangle className="w-4 h-4 text-orange-600" />
+              <span className="text-sm font-medium text-orange-600">Last Man Standing (7 wickets)</span>
+            </div>
+          )}
+
           {/* Show current batsmen and bowler if set */}
           {hasBatsmen && hasBowler ? (
-            <div className="grid grid-cols-3 gap-3">
+            <div className={cn("grid gap-3", isLastManStanding ? "grid-cols-2" : "grid-cols-3")}>
               <div className="p-3 rounded-md bg-emerald-500/10 border border-emerald-500/30">
                 <p className="text-xs text-emerald-600 mb-1">Striker *</p>
                 <p className="font-medium text-emerald-700">{getPlayerName(match.strikerId)}</p>
               </div>
-              <div className="p-3 rounded-md bg-white/50 border dark:bg-white/5">
-                <p className="text-xs text-muted-foreground mb-1">Non-Striker</p>
-                <p className="font-medium">{getPlayerName(match.nonStrikerId)}</p>
-              </div>
+              {!isLastManStanding && (
+                <div className="p-3 rounded-md bg-white/50 border dark:bg-white/5">
+                  <p className="text-xs text-muted-foreground mb-1">Non-Striker</p>
+                  <p className="font-medium">{getPlayerName(match.nonStrikerId)}</p>
+                </div>
+              )}
               <div className="p-3 rounded-md bg-purple-500/10 border border-purple-500/30">
                 <p className="text-xs text-purple-600 mb-1">Bowler</p>
                 <p className="font-medium text-purple-700">{getPlayerName(match.currentBowlerId)}</p>
