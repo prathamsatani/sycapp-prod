@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: box-cricket-manager
+    name: spl-app-prod
     runtime: node
     plan: free
     buildCommand: npm install --production=false && npm run build
