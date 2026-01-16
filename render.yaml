@@ -12,7 +12,7 @@ services:
         sync: false
       - key: GMAIL_USER
         sync: false
-      - key: GMAIL_PASS
+      - key: GMAIL_APP_PASSWORD
         sync: false
       - key: PROD_DOMAIN
         value: splapp-prod.onrender.com

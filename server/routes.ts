@@ -21,7 +21,7 @@ const transporter = nodemailer.createTransport({
 });
 
 async function sendPaymentConfirmationEmail(playerEmail: string, playerName: string) {
-  const displayUrl = `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.PROD_DOMAIN}` : 'https://splapp-prod.onrender.com'}/display`;
+  const displayUrl = `${process.env.PROD_DOMAIN ? `https://${process.env.PROD_DOMAIN}` : 'https://splapp-prod.onrender.com'}/display`;
   
   const emailHtml = `
 <!DOCTYPE html>
