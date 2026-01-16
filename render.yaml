@@ -14,3 +14,5 @@ services:
         sync: false
       - key: GMAIL_PASS
         sync: false
+      - key: PROD_DOMAIN
+        value: splapp-prod.onrender.com
