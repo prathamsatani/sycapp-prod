@@ -235,6 +235,7 @@ export async function registerRoutes(
       const players = await storage.getAllPlayers();
       res.json(players);
     } catch (error) {
+      console.error(error);
       res.status(500).json({ error: "Failed to fetch players" });
     }
   });
